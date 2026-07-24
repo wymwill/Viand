@@ -1,0 +1,13 @@
+.DS_Store
+.artifacts/
+.env
+.env.local
+.env.*.local
+graphify-out/
+node_modules/
+.venv/
+.next/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
