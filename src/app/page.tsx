@@ -16,7 +16,7 @@ type SimulationResponse = {
   error?: string;
 };
 
-const starterMessages = ["pick a place", "Downtown Berkeley", "Mexican under $25", "done"];
+const starterMessages = ["Hey Viand", "Downtown Berkeley", "Mexican under $25", "done"];
 
 export default function Dashboard() {
   const [message, setMessage] = useState("");
@@ -24,10 +24,10 @@ export default function Dashboard() {
     {
       id: "welcome",
       from: "bot",
-      text: "Ready when your group is. Send “pick a place.”",
+      text: "Ready when your group is. Say “Hey Viand” to begin.",
     },
   ]);
-  const [state, setState] = useState("COLLECTING_LOCATION");
+  const [state, setState] = useState("IDLE");
   const [location, setLocation] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [connection, setConnection] = useState<LinqStatus>({
@@ -54,10 +54,11 @@ export default function Dashboard() {
   }, []);
 
   const nextHint = useMemo(() => {
+    if (state === "IDLE") return "Say “Hey Viand” to begin";
     if (state === "COLLECTING_LOCATION") return "Try a neighborhood, ZIP, or address";
     if (state === "COLLECTING_PREFERENCES") return "Add a cuisine, budget, or dietary need";
     if (state === "VOTING") return "Vote 1, 2, or 3";
-    return "Send “pick a place” to begin again";
+    return "Say “Hey Viand” to begin again";
   }, [state]);
 
   async function send(text: string) {

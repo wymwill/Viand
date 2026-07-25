@@ -1,7 +1,8 @@
 import { advance } from "@/domain/state-machine/engine";
 import { initialSnapshot } from "@/domain/state-machine/session";
 import type { RestaurantProvider } from "@/domain/restaurants/provider";
-import { parseCommand } from "@/domain/commands";
+import { idleDisposition, parseCommand } from "@/domain/commands";
+import type { MessageInterpreter } from "@/domain/interpret/types";
 import * as copy from "@/domain/messages/copy";
 import { ONBOARDING } from "@/domain/messages/copy";
 import type { MessagingProvider } from "../messaging/provider";
@@ -22,6 +23,7 @@ export interface ConversationDeps {
   store: SessionStore;
   messaging: MessagingProvider;
   restaurants: RestaurantProvider;
+  interpreter: MessageInterpreter;
 }
 
 export interface HandleResult {
@@ -70,16 +72,46 @@ export async function handleInboundMessage(
     return { processed: true, replies: [ONBOARDING] };
   }
 
-  const stored: StoredChat = (await deps.store.load(message.linqChatId)) ?? {
+  const existing = await deps.store.load(message.linqChatId);
+  const isIdle =
+    existing == null ||
+    existing.snapshot.state === "COMPLETED" ||
+    existing.snapshot.state === "CANCELLED";
+
+  // Group chats are noisy. With nothing running, only an intentional invocation
+  // starts a decision; HELP and CANCEL are answered without creating any state,
+  // so a stray HELP cannot leave the chat parked in COLLECTING_LOCATION where
+  // the next unrelated message would be read as a location.
+  if (isIdle) {
+    const disposition = idleDisposition(command);
+    if (disposition === "ignore") return { processed: true, replies: [] };
+    if (disposition === "answer") {
+      const text = command.kind === "HELP" ? copy.HELP : copy.NOTHING_RUNNING;
+      await send(deps, message.linqChatId, [text]);
+      return { processed: true, replies: [text] };
+    }
+  }
+
+  const stored: StoredChat = existing ?? {
     linqChatId: message.linqChatId,
     isGroup: message.isGroup,
     snapshot: initialSnapshot(message.isGroup),
   };
 
+  // Interpretation resolves free text only — the deterministic command above is
+  // authoritative for anything it recognised. The interpreter reads its inputs
+  // and returns a value; it never sends, stores, or mutates session state.
+  const interpretation = await deps.interpreter.interpret({
+    text: message.text,
+    command,
+    state: stored.snapshot.state,
+    optionNames: stored.snapshot.candidates.map((candidate) => candidate.restaurant.name),
+  });
+
   const { snapshot, replies } = await advance({
     snapshot: stored.snapshot,
     memberId: message.senderHandle,
-    text: message.text,
+    interpretation,
     restaurants: deps.restaurants,
   });
 

@@ -15,7 +15,7 @@ import type { Standing } from "../voting/tally";
 export const ONBOARDING = [
   "Hey! I help groups agree on where to eat.",
   "",
-  'Add this number to your iMessage group, then send “pick a place.”',
+  'Add this number to your iMessage group, then say “Hey Viand.”',
   "",
   "Send HELP anytime for instructions.",
 ].join("\n");
@@ -23,7 +23,7 @@ export const ONBOARDING = [
 export const HELP = [
   "Here's how I work:",
   "",
-  "• PICK A PLACE — start a new decision",
+  "• HEY VIAND — start a new decision",
   "• DONE — finish preferences, or close voting",
   "• STATUS — see where things stand",
   "• CHANGE — redo your answer",
@@ -60,17 +60,17 @@ export const NO_OPTIONS_FOUND = [
   "Send CHANGE to adjust an answer, or CANCEL to stop.",
 ].join("\n");
 
-export const CANCELLED = "Cancelled. Send PICK A PLACE whenever you want to try again.";
+export const CANCELLED = "Cancelled. Say HEY VIAND whenever you want to try again.";
 
 export const ALREADY_RUNNING =
   "We already have a decision going. Send STATUS to see where we are, or CANCEL to start over.";
 
-export const NOTHING_RUNNING = "Nothing going right now. Send PICK A PLACE to start.";
+export const NOTHING_RUNNING = "Nothing going right now. Say HEY VIAND to start.";
 
 export const OPTED_OUT =
   "You're opted out and won't get more messages from me. Send START to opt back in.";
 
-export const OPTED_IN = "You're back in. Send PICK A PLACE to start a decision.";
+export const OPTED_IN = "You're back in. Say HEY VIAND to start a decision.";
 
 export const LOCATION_NOT_UNDERSTOOD =
   "I need an area to search near — a neighborhood, ZIP code, or address works.";
@@ -89,8 +89,21 @@ function star(rating: number): string {
   return `${rating.toFixed(1)}★`;
 }
 
-export function recommendations(candidates: readonly Candidate[], needsDisclaimer: boolean): string {
-  const lines: string[] = ["I found three options:", ""];
+/** Where the options came from, so the group is never misled about the data. */
+export interface SearchAttribution {
+  sourceLabel: string;
+  resolvedLocation: string | null;
+}
+
+export function recommendations(
+  candidates: readonly Candidate[],
+  needsDisclaimer: boolean,
+  attribution: SearchAttribution,
+): string {
+  const heading = attribution.resolvedLocation
+    ? `Three options near ${attribution.resolvedLocation}:`
+    : "I found three options:";
+  const lines: string[] = [heading, ""];
 
   candidates.forEach((candidate, index) => {
     const { restaurant } = candidate;
@@ -109,6 +122,9 @@ export function recommendations(candidates: readonly Candidate[], needsDisclaime
     lines.push("");
     lines.push(ALLERGY_DISCLAIMER);
   }
+
+  lines.push("");
+  lines.push(attribution.sourceLabel);
 
   return lines.join("\n");
 }

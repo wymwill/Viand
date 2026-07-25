@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCommand } from "@/domain/commands";
+import { idleDisposition, isWakePhrase, parseCommand } from "@/domain/commands";
 
 describe("parseCommand", () => {
   it("is case-insensitive and tolerates punctuation", () => {
@@ -14,6 +14,26 @@ describe("parseCommand", () => {
     expect(parseCommand("done").kind).toBe("DONE");
     expect(parseCommand("I'm done").kind).toBe("DONE");
     expect(parseCommand("that's everyone").kind).toBe("DONE");
+  });
+
+  it("recognizes intentional Viand wake phrases", () => {
+    for (const phrase of [
+      "Hey Viand",
+      "Hi, Viand!",
+      "hello @viand",
+      "@Viand",
+      "Viand, pick a place",
+      "Hey Viand, where should we eat?",
+    ]) {
+      expect(isWakePhrase(phrase)).toBe(true);
+      expect(parseCommand(phrase).kind).toBe("PICK_A_PLACE");
+    }
+  });
+
+  it("does not wake on incidental mentions or the old start command", () => {
+    expect(isWakePhrase("Viand is a cool name")).toBe(false);
+    expect(isWakePhrase("pick a place")).toBe(false);
+    expect(isWakePhrase("we talked about Viand yesterday")).toBe(false);
   });
 
   it("parses votes with and without decoration", () => {
@@ -53,5 +73,24 @@ describe("parseCommand", () => {
 
   it("preserves the original text on freeform input", () => {
     expect(parseCommand("  ")).toEqual({ kind: "FREEFORM", text: "  " });
+  });
+});
+
+describe("idleDisposition", () => {
+  it("activates on an intentional invocation", () => {
+    for (const phrase of ["@Viand", "Hey Viand", "pick a place", "Viand, pick a place"]) {
+      expect(idleDisposition(parseCommand(phrase))).toBe("activate");
+    }
+  });
+
+  it("answers HELP and CANCEL with no session running", () => {
+    expect(idleDisposition(parseCommand("help"))).toBe("answer");
+    expect(idleDisposition(parseCommand("cancel"))).toBe("answer");
+  });
+
+  it("ignores ordinary group chatter", () => {
+    for (const phrase of ["Downtown Berkeley", "1", "veto 2", "done", "lol same", "status"]) {
+      expect(idleDisposition(parseCommand(phrase))).toBe("ignore");
+    }
   });
 });

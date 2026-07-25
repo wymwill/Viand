@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { parseCommand } from "@/domain/commands";
+import { deterministicInterpretation } from "@/domain/interpret/deterministic";
 import { advance } from "@/domain/state-machine/engine";
 import { initialSnapshot, type SessionSnapshot } from "@/domain/state-machine/session";
 import { MockRestaurantProvider } from "@/domain/restaurants/mock-provider";
@@ -6,7 +8,12 @@ import { MockRestaurantProvider } from "@/domain/restaurants/mock-provider";
 const restaurants = new MockRestaurantProvider();
 
 async function say(snapshot: SessionSnapshot, memberId: string, text: string) {
-  return advance({ snapshot, memberId, text, restaurants });
+  const interpretation = deterministicInterpretation({
+    text,
+    command: parseCommand(text),
+    state: snapshot.state,
+  });
+  return advance({ snapshot, memberId, interpretation, restaurants });
 }
 
 describe("full group decision flow", () => {
@@ -30,6 +37,8 @@ describe("full group decision flow", () => {
     expect(snapshot.candidates).toHaveLength(3);
     const optionsMessage = recommended.replies.at(-1)?.text ?? "";
     expect(optionsMessage).toContain("I found three options");
+    // Demo data must always say so, so it cannot be mistaken for live listings.
+    expect(optionsMessage).toContain("not live listings");
     // The chat-opening options message must not contain a directions URL.
     expect(optionsMessage).not.toContain("http");
 

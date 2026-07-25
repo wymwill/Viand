@@ -1,6 +1,6 @@
 import type { Command } from "../commands";
 import type { Candidate } from "../recommendations/select";
-import type { MemberPreference, DecisionState } from "../types";
+import type { DecisionState, MemberPreference } from "../types";
 import type { Ballot } from "../voting/tally";
 
 /**
@@ -43,6 +43,12 @@ export interface InboundEvent {
   command: Command;
   /** Raw text, needed when the command is FREEFORM and must be parsed as data. */
   rawText: string;
+  /**
+   * Preference already extracted from `rawText` by the interpretation layer.
+   * Null when nothing was extracted, in which case the reducer parses the raw
+   * text itself — so the machine stays correct with no interpreter at all.
+   */
+  preference?: MemberPreference | null;
 }
 
 /**

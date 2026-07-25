@@ -13,6 +13,7 @@
     "linq:register-webhook": "node --env-file-if-exists=.env.local scripts/register-linq-webhook.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@linqapp/sdk": "0.28.2",
     "next": "16.2.11",
     "react": "19.2.8",

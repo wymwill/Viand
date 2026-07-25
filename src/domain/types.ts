@@ -42,7 +42,17 @@ export const CUISINES = [
   "salad",
 ] as const;
 
-export type Cuisine = (typeof CUISINES)[number];
+/**
+ * Assigned when a live provider returns a category that maps to none of the
+ * cuisines above. Deliberately not a member of CUISINES: it must never be
+ * offered to a parser or a model as something a person could ask for, but it
+ * has to be representable so real listings aren't silently mislabelled as a
+ * cuisine they are not. It matches no stated preference and joins no family,
+ * which is exactly how an unknown category should score.
+ */
+export const UNKNOWN_CUISINE = "other";
+
+export type Cuisine = (typeof CUISINES)[number] | typeof UNKNOWN_CUISINE;
 
 /**
  * Cuisines that satisfy each other reasonably well. Used to give partial credit

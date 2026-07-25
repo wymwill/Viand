@@ -31,8 +31,32 @@ export interface RestaurantSearchInput {
   openNowOnly?: boolean;
 }
 
+/** Where a set of results came from. Surfaced to the group, never inferred. */
+export type RestaurantSource = "mock" | "google_places";
+
+export interface RestaurantSearchResult {
+  restaurants: Restaurant[];
+  source: RestaurantSource;
+  /**
+   * One line shown under the options so a demo catalogue can never be mistaken
+   * for live listings. Attribution is a property of the search, not of each
+   * restaurant, which is why it lives here rather than on Restaurant.
+   */
+  sourceLabel: string;
+  /**
+   * The area the search actually centred on after geocoding, when the provider
+   * geocodes. Null when the provider ignores the location text.
+   */
+  resolvedLocation: string | null;
+}
+
+export const MOCK_SOURCE_LABEL =
+  "Demo results from a fixed sample catalogue — not live listings.";
+
+export const GOOGLE_PLACES_SOURCE_LABEL = "Live results from Google Places.";
+
 export interface RestaurantProvider {
-  search(input: RestaurantSearchInput): Promise<Restaurant[]>;
+  search(input: RestaurantSearchInput): Promise<RestaurantSearchResult>;
 }
 
 /** Thrown by providers that are wired up but not configured for this environment. */

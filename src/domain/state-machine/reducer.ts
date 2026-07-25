@@ -8,7 +8,7 @@ import {
   voterCount,
   type Ballot,
 } from "../voting/tally";
-import type { OptionNumber } from "../types";
+import type { MemberPreference, OptionNumber } from "../types";
 import {
   initialSnapshot,
   type Effect,
@@ -83,7 +83,7 @@ export function transition(previous: SessionSnapshot, event: InboundEvent): Tran
     case "COLLECTING_LOCATION":
       return inLocation(snapshot, command, memberId);
     case "COLLECTING_PREFERENCES":
-      return inPreferences(snapshot, command, memberId, event.rawText);
+      return inPreferences(snapshot, command, memberId, event.rawText, event.preference ?? null);
     case "READY_TO_RECOMMEND":
       // Transient: the caller runs the recommendation effect and moves us on.
       return result(snapshot, [], [{ kind: "RUN_RECOMMENDATION" }]);
@@ -128,6 +128,7 @@ function inPreferences(
   command: Command,
   memberId: string,
   rawText: string,
+  preference: MemberPreference | null,
 ): TransitionResult {
   touchMember(snapshot, memberId);
 
@@ -158,7 +159,7 @@ function inPreferences(
     case "FREEFORM": {
       // Every free-text message here is that member's preference. A later one
       // overwrites an earlier one, which is how "change my answer" works.
-      snapshot.preferences[memberId] = parsePreference(rawText);
+      snapshot.preferences[memberId] = preference ?? parsePreference(rawText);
       return result(snapshot, [
         reply(copy.preferencesRecorded(Object.keys(snapshot.preferences).length)),
       ]);

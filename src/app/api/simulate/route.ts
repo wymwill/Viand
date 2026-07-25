@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { processMessage } from "@/lib/runtime";
+import { processSimulatedMessage } from "@/lib/runtime";
 
 const simulationSchema = z.object({
   chatId: z.string().min(1).max(100).default("demo-group"),
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = await processMessage({
+  const result = await processSimulatedMessage({
     eventId: randomUUID(),
     linqChatId: parsed.data.chatId,
     isGroup: true,

@@ -1,4 +1,4 @@
-import { parseCommand } from "../commands";
+import type { Interpretation } from "../interpret/types";
 import * as copy from "../messages/copy";
 import { recommend } from "../recommendations/select";
 import type { RestaurantProvider } from "../restaurants/provider";
@@ -9,7 +9,8 @@ import type { OutboundIntent, SessionSnapshot } from "./session";
 export interface AdvanceInput {
   snapshot: SessionSnapshot;
   memberId: string;
-  text: string;
+  /** Command and preference already resolved by the interpretation layer. */
+  interpretation: Interpretation;
   restaurants: RestaurantProvider;
 }
 
@@ -35,11 +36,11 @@ function vetoedRestaurantIds(snapshot: SessionSnapshot): string[] {
  * so at most one recommendation and one announcement resolve per message.
  */
 export async function advance(input: AdvanceInput): Promise<AdvanceOutput> {
-  const command = parseCommand(input.text);
   const { snapshot, replies, effects } = transition(input.snapshot, {
     memberId: input.memberId,
-    command,
-    rawText: input.text,
+    command: input.interpretation.command,
+    rawText: input.interpretation.text,
+    preference: input.interpretation.preference,
   });
 
   const outbound = [...replies];
@@ -66,7 +67,7 @@ async function resolveRecommendation(
     radiusMiles: snapshot.radiusMiles,
   });
 
-  const { candidates, needsAllergyDisclaimer } = recommend(found, preferences, {
+  const { candidates, needsAllergyDisclaimer } = recommend(found.restaurants, preferences, {
     vetoedRestaurantIds: vetoedRestaurantIds(snapshot),
   });
 
@@ -82,7 +83,12 @@ async function resolveRecommendation(
   snapshot.state = "VOTING";
   // The options message carries a maps URL only in the winner announcement, so
   // the recommendation text itself is safe to send as the chat-opening message.
-  outbound.push({ text: copy.recommendations(candidates, needsAllergyDisclaimer) });
+  outbound.push({
+    text: copy.recommendations(candidates, needsAllergyDisclaimer, {
+      sourceLabel: found.sourceLabel,
+      resolvedLocation: found.resolvedLocation,
+    }),
+  });
 }
 
 function resolveWinner(snapshot: SessionSnapshot, outbound: OutboundIntent[]): void {

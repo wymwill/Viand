@@ -31,6 +31,20 @@ const schema = z
     PHONE_NUMBER_E164: e164.default("+15555550123"),
 
     USE_MOCK_LINQ: booleanish.default(true),
+
+    // Structured AI interpretation of free-text messages. Off by default: the
+    // deterministic parser is a complete implementation on its own.
+    ANTHROPIC_API_KEY: z.string().optional(),
+    USE_AI_INTERPRETER: booleanish.default(false),
+    AI_INTERPRETER_MODEL: z.string().default("claude-haiku-4-5"),
+    AI_INTERPRETER_TIMEOUT_MS: z.coerce.number().int().positive().default(4_000),
+    AI_INTERPRETER_MAX_INPUT_CHARS: z.coerce.number().int().positive().default(500),
+    AI_INTERPRETER_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.6),
+
+    // Live restaurant data. Off by default for the same reason.
+    USE_MOCK_RESTAURANTS: booleanish.default(true),
+    GOOGLE_MAPS_API_KEY: z.string().optional(),
+    GOOGLE_PLACES_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
   })
   .superRefine((env, ctx) => {
     // When the real Linq provider is selected, its credentials become required.
@@ -44,6 +58,22 @@ const schema = z
           });
         }
       }
+    }
+
+    if (env.USE_AI_INTERPRETER && !env.ANTHROPIC_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["ANTHROPIC_API_KEY"],
+        message: "ANTHROPIC_API_KEY is required when USE_AI_INTERPRETER=true",
+      });
+    }
+
+    if (!env.USE_MOCK_RESTAURANTS && !env.GOOGLE_MAPS_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["GOOGLE_MAPS_API_KEY"],
+        message: "GOOGLE_MAPS_API_KEY is required when USE_MOCK_RESTAURANTS=false",
+      });
     }
   });
 

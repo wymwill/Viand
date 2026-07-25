@@ -39,6 +39,43 @@ function normalize(raw: string): string {
 const STOP_WORDS = new Set(["stop", "stopall", "unsubscribe"]);
 const START_WORDS = new Set(["start", "unstop", "resume", "subscribe"]);
 
+const WAKE_GREETINGS = new Set(["hey", "hi", "hello", "yo", "ok", "okay"]);
+const WAKE_REQUESTS = new Set([
+  "",
+  "pick",
+  "pick a place",
+  "pick a spot",
+  "pick somewhere",
+  "please pick a place",
+  "can you pick a place",
+  "help us pick a place",
+  "help us decide",
+  "decide for us",
+  "you pick",
+  "lets eat",
+  "where should we eat",
+  "where are we eating",
+  "where to eat",
+  "find us food",
+  "were hungry",
+  "im hungry",
+  "start",
+  "start a session",
+]);
+
+/**
+ * True only for an intentional invocation of the bot. Punctuation and an
+ * optional @ mention are removed by normalize(), so “Hey, @Viand!” and
+ * “viand” intentionally behave the same.
+ */
+export function isWakePhrase(raw: string): boolean {
+  const words = normalize(raw).split(" ").filter(Boolean);
+  if (words.length === 0) return false;
+  if (WAKE_GREETINGS.has(words[0] ?? "")) words.shift();
+  if (words.shift() !== "viand") return false;
+  return WAKE_REQUESTS.has(words.join(" "));
+}
+
 const EXACT_ALIASES: ReadonlyArray<readonly [ReadonlySet<string>, CommandKind]> = [
   [new Set(["eat", "eats", "food"]), "EAT"],
   [new Set(["help", "info", "commands", "how does this work"]), "HELP"],
@@ -77,6 +114,7 @@ export function parseCommand(raw: string): Command {
   // Compliance keywords win over everything else, always.
   if (STOP_WORDS.has(text)) return { kind: "STOP" };
   if (START_WORDS.has(text)) return { kind: "START" };
+  if (isWakePhrase(raw)) return { kind: "PICK_A_PLACE" };
 
   for (const [aliases, kind] of EXACT_ALIASES) {
     if (aliases.has(text)) return { kind } as Command;
@@ -89,4 +127,23 @@ export function parseCommand(raw: string): Command {
   if (vote?.[1]) return { kind: "VOTE", option: Number(vote[1]) as OptionNumber };
 
   return { kind: "FREEFORM", text: raw };
+}
+
+/**
+ * What a command means in a chat with no decision running — either because one
+ * never started or because the last one finished or was cancelled.
+ *
+ * - `activate` starts a session. Only an intentional invocation qualifies: a
+ *   wake phrase ("@Viand", "Hey Viand") or an explicit "pick a place", both of
+ *   which parseCommand maps to PICK_A_PLACE.
+ * - `answer` is replied to without creating any session state. HELP is
+ *   advertised as always available, and CANCEL deserves an answer rather than
+ *   silence; neither should leave an idle chat mid-session.
+ * - `ignore` is everything else. A group chat is full of messages that are not
+ *   addressed to the bot, and answering them is the fastest way to get muted.
+ */
+export function idleDisposition(command: Command): "activate" | "answer" | "ignore" {
+  if (command.kind === "PICK_A_PLACE") return "activate";
+  if (command.kind === "HELP" || command.kind === "CANCEL") return "answer";
+  return "ignore";
 }

@@ -28,7 +28,7 @@ function payload(eventId: string): string {
         },
       },
       direction: "inbound",
-      parts: [{ type: "text", value: "pick a place" }],
+      parts: [{ type: "text", value: "Hey Viand" }],
       sender_handle: {
         id: "handle-1",
         handle: "+15555550100",
