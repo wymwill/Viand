@@ -1,5 +1,11 @@
-import { formatPrice, winnerReasons, type Candidate } from "../recommendations/select";
-import type { MemberPreference } from "../types";
+import {
+  formatDistance,
+  formatPrice,
+  winnerReasons,
+  type Candidate,
+} from "../recommendations/select";
+import type { Restaurant } from "../restaurants/provider";
+import type { DietaryRequirement, MemberPreference } from "../types";
 import type { Standing } from "../voting/tally";
 
 /**
@@ -28,8 +34,9 @@ export const HELP = [
   "• STATUS — see where things stand",
   "• CHANGE — redo your answer",
   "• CANCEL — stop this decision",
-  "• 1, 2, 3 — vote for an option",
+  "• 1–5 — vote for an option",
   "• VETO 2 — rule an option out",
+  "• DETAILS 2 — address, website and links for an option",
   "",
   "Send STOP to opt out of messages at any time.",
 ].join("\n");
@@ -53,6 +60,18 @@ export const ASK_PREFERENCES = [
 
 export const ALLERGY_DISCLAIMER =
   "Restaurant information may be incomplete. Confirm serious allergies directly with the restaurant.";
+
+/**
+ * A live restaurant source can rate-limit, time out, or simply be down. That is
+ * an outage, not an empty result, and the group needs to know the difference —
+ * "nothing matched your restrictions" would send them off loosening preferences
+ * that were never the problem.
+ */
+export const SEARCH_UNAVAILABLE = [
+  "I couldn't reach the restaurant listings just now.",
+  "",
+  "Send DONE to try again, or CANCEL to stop.",
+].join("\n");
 
 export const NO_OPTIONS_FOUND = [
   "I couldn't find anywhere that works for everyone's restrictions.",
@@ -89,6 +108,68 @@ function star(rating: number): string {
   return `${rating.toFixed(1)}★`;
 }
 
+const NUMBER_WORDS = ["no", "one", "two", "three", "four", "five"] as const;
+
+/** Small counts read better as words in a text message than as digits. */
+function countWord(count: number): string {
+  return NUMBER_WORDS[count] ?? String(count);
+}
+
+function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/**
+ * "1, 2, or 3" — the ballot instruction has to match however many options were
+ * actually found, which is no longer always three.
+ */
+export function optionList(count: number): string {
+  const numbers = Array.from({ length: Math.max(count, 1) }, (_, index) => String(index + 1));
+  if (numbers.length === 1) return numbers[0] as string;
+  return `${numbers.slice(0, -1).join(", ")}, or ${numbers.at(-1)}`;
+}
+
+export const NO_OPTIONS_YET = "No options on the table yet. Say HEY VIAND to start one.";
+
+/**
+ * We have no Yelp API, so this is an honest search link rather than a claim to
+ * be the business's Yelp page — the group lands on Yelp's results for this name
+ * and address and picks out the right one.
+ */
+function yelpSearchUrl(restaurant: Restaurant): string {
+  const params = new URLSearchParams({ find_desc: restaurant.name });
+  if (restaurant.address) params.set("find_loc", restaurant.address);
+  return `https://www.yelp.com/search?${params.toString()}`;
+}
+
+/**
+ * Everything we know about one option, for when the group wants more than the
+ * one-line summary. Only states what the source actually published: a missing
+ * website or phone is left out rather than rendered as an empty field.
+ */
+export function placeDetails(restaurant: Restaurant): string {
+  const facts = [formatPrice(restaurant.priceLevel), formatDistance(restaurant.distanceMiles)];
+  if (restaurant.rating > 0) facts.push(star(restaurant.rating));
+
+  const lines = [restaurant.name, facts.join(" · ")];
+
+  if (restaurant.address) lines.push(restaurant.address);
+  if (restaurant.accommodates.length > 0) {
+    const labels = restaurant.accommodates.map((requirement: DietaryRequirement) =>
+      requirement.replace(/_/g, "-"),
+    );
+    lines.push(`Options for: ${labels.join(", ")}`);
+  }
+  if (restaurant.phone) lines.push(`Phone: ${restaurant.phone}`);
+
+  lines.push("");
+  if (restaurant.website) lines.push(`Website: ${restaurant.website}`);
+  lines.push(`Directions: ${restaurant.mapsUrl}`);
+  lines.push(`Look up on Yelp: ${yelpSearchUrl(restaurant)}`);
+
+  return lines.join("\n");
+}
+
 /** Where the options came from, so the group is never misled about the data. */
 export interface SearchAttribution {
   sourceLabel: string;
@@ -100,23 +181,27 @@ export function recommendations(
   needsDisclaimer: boolean,
   attribution: SearchAttribution,
 ): string {
+  const count = candidates.length;
+  const noun = `${countWord(count)} option${count === 1 ? "" : "s"}`;
   const heading = attribution.resolvedLocation
-    ? `Three options near ${attribution.resolvedLocation}:`
-    : "I found three options:";
+    ? `${capitalise(noun)} near ${attribution.resolvedLocation}:`
+    : `I found ${noun}:`;
   const lines: string[] = [heading, ""];
 
   candidates.forEach((candidate, index) => {
     const { restaurant } = candidate;
-    lines.push(
-      `${index + 1}. ${restaurant.name} — ${restaurant.distanceMiles.toFixed(1)} mi · ` +
-        `${formatPrice(restaurant.priceLevel)} · ${star(restaurant.rating)}`,
-    );
+    const facts = [`${restaurant.distanceMiles.toFixed(1)} mi`, formatPrice(restaurant.priceLevel)];
+    // A source with no rating for this restaurant must not be rendered as a
+    // rating of zero — "0.0★" reads as terrible rather than as unknown.
+    if (restaurant.rating > 0) facts.push(star(restaurant.rating));
+    lines.push(`${index + 1}. ${restaurant.name} — ${facts.join(" · ")}`);
     lines.push(`   ${candidate.explanation}`);
     lines.push("");
   });
 
-  lines.push("Reply 1, 2, or 3.");
+  lines.push(`Reply ${optionList(candidates.length)}.`);
   lines.push('Reply “veto 2” if an option cannot work.');
+  lines.push('Reply “details 2” to hear more about one.');
 
   if (needsDisclaimer) {
     lines.push("");
@@ -166,7 +251,7 @@ export function statusVoting(standings: readonly Standing[], votedCount: number)
     lines.push(`${index + 1}. ${standing.candidate.restaurant.name} — ${standing.votes}${vetoNote}`);
   });
   lines.push("");
-  lines.push("Reply 1, 2, or 3, or DONE to close it out.");
+  lines.push(`Reply ${optionList(standings.length)}, or DONE to close it out.`);
   return lines.join("\n");
 }
 

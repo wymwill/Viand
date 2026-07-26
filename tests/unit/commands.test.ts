@@ -49,6 +49,35 @@ describe("parseCommand", () => {
     expect(parseCommand("VETO #3")).toEqual({ kind: "VETO", option: 3 });
   });
 
+  it("parses a request for details about an option", () => {
+    for (const phrase of [
+      "details 2",
+      "detail 2",
+      "more about 2",
+      "tell me more about 2",
+      "info 2",
+      "DETAILS #2",
+    ]) {
+      expect(parseCommand(phrase)).toEqual({ kind: "DETAILS", option: 2 });
+    }
+  });
+
+  it("accepts a details request with no option named", () => {
+    expect(parseCommand("details")).toEqual({ kind: "DETAILS", option: null });
+    expect(parseCommand("more info")).toEqual({ kind: "DETAILS", option: null });
+  });
+
+  it("keeps a bare INFO as help rather than details", () => {
+    expect(parseCommand("info").kind).toBe("HELP");
+  });
+
+  it("accepts votes and vetoes up to five", () => {
+    expect(parseCommand("5")).toEqual({ kind: "VOTE", option: 5 });
+    expect(parseCommand("veto 4")).toEqual({ kind: "VETO", option: 4 });
+    // Six options are never presented, so this is preference text.
+    expect(parseCommand("6").kind).toBe("FREEFORM");
+  });
+
   it("treats compliance keywords as opt-out and opt-in", () => {
     expect(parseCommand("STOP").kind).toBe("STOP");
     expect(parseCommand("unsubscribe").kind).toBe("STOP");

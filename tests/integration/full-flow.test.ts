@@ -34,9 +34,11 @@ describe("full group decision flow", () => {
     const recommended = await say(snapshot, "alice", "done");
     snapshot = recommended.snapshot;
     expect(snapshot.state).toBe("VOTING");
-    expect(snapshot.candidates).toHaveLength(3);
+    // Three to five, depending on what survives everyone's restrictions.
+    expect(snapshot.candidates.length).toBeGreaterThanOrEqual(3);
+    expect(snapshot.candidates.length).toBeLessThanOrEqual(5);
     const optionsMessage = recommended.replies.at(-1)?.text ?? "";
-    expect(optionsMessage).toContain("I found three options");
+    expect(optionsMessage).toMatch(/I found (three|four|five) options/);
     // Demo data must always say so, so it cannot be mistaken for live listings.
     expect(optionsMessage).toContain("not live listings");
     // The chat-opening options message must not contain a directions URL.
@@ -71,6 +73,35 @@ describe("full group decision flow", () => {
     // carol has not voted, but DONE with two votes in force-closes.
     const closed = await say(snapshot, "alice", "done");
     expect(closed.snapshot.state).toBe("COMPLETED");
+  });
+
+  it("survives a restaurant source that is down", async () => {
+    const broken = {
+      search: async () => {
+        throw new Error("429 Too Many Requests");
+      },
+    };
+
+    let snapshot = initialSnapshot(true);
+    ({ snapshot } = await say(snapshot, "alice", "Berkeley"));
+    ({ snapshot } = await say(snapshot, "alice", "anything"));
+
+    const interpretation = deterministicInterpretation({
+      text: "done",
+      command: parseCommand("done"),
+      state: snapshot.state,
+    });
+    const result = await advance({
+      snapshot,
+      memberId: "alice",
+      interpretation,
+      restaurants: broken,
+    });
+
+    expect(result.replies.at(-1)?.text).toContain("couldn't reach the restaurant listings");
+    // Recoverable: the answers survive and DONE can be sent again.
+    expect(result.snapshot.state).toBe("COLLECTING_PREFERENCES");
+    expect(Object.keys(result.snapshot.preferences)).toHaveLength(1);
   });
 
   it("returns to preferences when restrictions eliminate every option", async () => {

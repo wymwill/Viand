@@ -1,7 +1,7 @@
 import { MockRestaurantProvider } from "@/domain/restaurants/mock-provider";
 import type { RestaurantProvider } from "@/domain/restaurants/provider";
 import { getEnv } from "../env";
-import { GooglePlacesRestaurantProvider } from "./google-places-provider";
+import { OsmRestaurantProvider } from "./osm-provider";
 
 let mockSingleton: MockRestaurantProvider | null = null;
 
@@ -11,17 +11,19 @@ export function getMockRestaurantProvider(): MockRestaurantProvider {
 }
 
 /**
- * The provider the live webhook path should use. Mirrors the messaging seam:
- * the mock is the default so the app runs with no credentials, and the real
- * provider is only constructed once it has been explicitly switched on.
+ * OpenStreetMap is the live source: free, keyless, and unmetered, which is the
+ * whole reason it won over the commercial APIs. `FallbackRestaurantProvider`
+ * stays in the tree unused — it is the composition point for a second source
+ * (ratings, most likely) whenever one is added.
  */
 export function getRestaurantProvider(): RestaurantProvider {
   const env = getEnv();
-  if (env.USE_MOCK_RESTAURANTS || !env.GOOGLE_MAPS_API_KEY) {
-    return getMockRestaurantProvider();
-  }
-  return new GooglePlacesRestaurantProvider({
-    apiKey: env.GOOGLE_MAPS_API_KEY,
-    timeoutMs: env.GOOGLE_PLACES_TIMEOUT_MS,
+  if (env.USE_MOCK_RESTAURANTS) return getMockRestaurantProvider();
+
+  return new OsmRestaurantProvider({
+    overpassUrl: env.OVERPASS_URL,
+    nominatimUrl: env.NOMINATIM_URL,
+    userAgent: env.OSM_USER_AGENT,
+    timeoutMs: env.OSM_TIMEOUT_MS,
   });
 }

@@ -1,6 +1,6 @@
 import { DeterministicInterpreter } from "@/domain/interpret/deterministic";
-import type { MessageInterpreter } from "@/domain/interpret/types";
 import { MockRestaurantProvider } from "@/domain/restaurants/mock-provider";
+import type { MessageInterpreter } from "@/domain/interpret/types";
 import type { RestaurantProvider } from "@/domain/restaurants/provider";
 import { handleInboundMessage, type InboundMessage } from "@/lib/conversation/service";
 import { getMessageInterpreter } from "@/lib/interpret";
@@ -45,18 +45,38 @@ function getLiveRuntime(): Runtime {
 }
 
 /**
- * The dashboard is unauthenticated and its chat id is not a real place, so it
- * never spends Places quota or model tokens — the same reason it never sends
- * through real Linq. Mock data and the deterministic parser exercise the whole
- * conversation path without reaching any paid third party.
+ * The dashboard never sends a real text and never spends model tokens: its chat
+ * id is not a real conversation, and the endpoint is unauthenticated.
+ *
+ * Restaurants are the exception — they follow the configured provider, so the
+ * simulator shows the same listings a real group would get. That is the point
+ * of the simulator, and the live source costs nothing per request. Note this
+ * does put the public dashboard on Overpass, a volunteer-run service: if this
+ * is ever exposed to real traffic, point OVERPASS_URL at a paid or self-hosted
+ * instance rather than leaning on the shared one.
  */
 function getSimulationRuntime(): Runtime {
   globalRuntime[SIMULATION_KEY] ??= {
     store: new InMemorySessionStore(),
-    restaurants: new MockRestaurantProvider(),
+    restaurants: simulationRestaurants(),
     interpreter: new DeterministicInterpreter(),
   };
   return globalRuntime[SIMULATION_KEY];
+}
+
+/**
+ * Choosing a provider reads the environment, and the environment can be invalid
+ * for reasons that have nothing to do with the dashboard — half-entered Linq
+ * credentials being the obvious one. The dashboard must never 500 because the
+ * live integration is mid-setup, so anything unreadable degrades to the demo
+ * catalogue instead of throwing.
+ */
+function simulationRestaurants(): RestaurantProvider {
+  try {
+    return getRestaurantProvider();
+  } catch {
+    return new MockRestaurantProvider();
+  }
 }
 
 async function processWith(

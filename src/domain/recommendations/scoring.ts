@@ -25,6 +25,19 @@ function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
+/**
+ * The quality term. A real rating is the best available signal, but sources
+ * like OpenStreetMap publish none at all, in which case how completely the
+ * listing is described stands in for it. That proxy is deliberately weak — it
+ * says a place is real and well looked after, not that the food is good — and
+ * it occupies the rating slot rather than adding weight of its own, so a source
+ * with genuine ratings is never diluted by it.
+ */
+function qualitySignal(restaurant: Restaurant): number {
+  if (restaurant.rating > 0) return clamp01((restaurant.rating - 3) / 2);
+  return clamp01(restaurant.completeness ?? 0);
+}
+
 function sharesFamily(a: Cuisine, b: Cuisine): boolean {
   return CUISINE_FAMILIES.some((family) => family.includes(a) && family.includes(b));
 }
@@ -131,7 +144,7 @@ export function scoreRestaurant(
   if (preferences.length === 0) {
     // No stated preferences: fall back to intrinsic quality only.
     const distance = clamp01(1 - restaurant.distanceMiles / DISTANCE_HORIZON_MILES);
-    const rating = clamp01((restaurant.rating - 3) / 2);
+    const rating = qualitySignal(restaurant);
     const total =
       (SCORE_WEIGHTS.weakestMember + SCORE_WEIGHTS.averageMember + SCORE_WEIGHTS.cuisineMatch) * 0.7 +
       SCORE_WEIGHTS.distance * distance +
@@ -163,7 +176,7 @@ export function scoreRestaurant(
         ).length / withCuisineOpinion.length;
 
   const distance = clamp01(1 - restaurant.distanceMiles / DISTANCE_HORIZON_MILES);
-  const rating = clamp01((restaurant.rating - 3) / 2);
+  const rating = qualitySignal(restaurant);
   const priceMatch =
     preferences.reduce((sum, preference) => sum + priceComfort(restaurant, preference), 0) /
     preferences.length;

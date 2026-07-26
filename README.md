@@ -41,19 +41,34 @@ It is deliberately additive and cannot make the bot worse:
 
 ## Optional: live restaurants
 
-With `USE_MOCK_RESTAURANTS=false` and a `GOOGLE_MAPS_API_KEY` (Places API (New)
-and Geocoding API enabled), results come from Google. A typed neighborhood, ZIP
-code, or address is geocoded; a shared location — a coordinate pair or a map
-link — is used directly with no geocoding call. Results are normalised to the
-same shape as the demo catalogue and the group is told which source it got.
+With `USE_MOCK_RESTAURANTS=false`, results come from **Google Places**, with
+**OpenStreetMap** as a fallback. A typed neighborhood, ZIP code, or address is
+geocoded; a shared location — a coordinate pair or a map link — is used
+directly with no geocoding call. Either way results are normalised to the same
+shape as the demo catalogue, and the group is told which source answered.
 
-One limitation is worth knowing before switching it on: Places publishes a
-single dietary signal (`servesVegetarianFood`) and nothing about vegan, halal,
-kosher, gluten, or allergens. Viand reports only what Google actually states
-and infers nothing from cuisine, because a dietary claim about a real
-restaurant is something an allergic person acts on. Since every dietary
-requirement is a hard restriction, a halal, kosher, gluten-free, or nut-free
-request will find no live options and the group will be told so.
+- **Google Places** is primary. It has ratings and prices, which matter because
+  `maxPriceLevel` is a hard restriction. Needs `GOOGLE_MAPS_API_KEY` with the
+  Places API (New) and Geocoding API enabled. Its one blind spot is diet:
+  it publishes `servesVegetarianFood` and nothing about vegan, halal, kosher,
+  or allergens, and Viand infers nothing from cuisine — a dietary claim about a
+  real restaurant is something an allergic person acts on.
+- **OpenStreetMap** is the keyless fallback, and serves alone when no Google
+  key is set. It carries the `diet:*` tags Google lacks, so halal, kosher,
+  gluten-free, and vegan requests can succeed. Only `yes` and `only` count —
+  `limited` is rejected, because a hard restriction must not be satisfied by
+  “a couple of things on the menu”. It has no ratings or prices.
+
+The fallback triggers when the primary throws **or returns nothing**: a source
+that is reachable but has no listings for the area hasn't answered the group's
+question. If both come up empty that is a real answer and is kept; only when
+both genuinely fail does the group get a retryable “couldn't reach the
+listings” message instead of an error.
+
+OSM's `opening_hours` grammar is not parsed, so `openNow` is always true on
+that provider. Nominatim and Overpass are shared volunteer services with usage
+policies — set `OSM_USER_AGENT`, and point `NOMINATIM_URL` / `OVERPASS_URL` at
+a paid or self-hosted instance for real traffic.
 
 ## Connect Linq
 
@@ -82,10 +97,10 @@ The route passes the unmodified request body and headers to
 
 - State and webhook deduplication are in memory and reset on restart.
 - Restaurant results come from a deterministic Berkeley demo catalogue unless
-  Google Places is switched on.
+  live data is switched on.
 - The dashboard simulator always uses mock messaging, mock restaurants, and the
   deterministic parser, on its own isolated state — an unauthenticated page
-  never spends Linq, Places, or model quota.
+  never spends Linq, restaurant-API, or model quota.
 - Supabase, Prisma, user accounts, and deployment are intentionally excluded.
 
 ## Verify

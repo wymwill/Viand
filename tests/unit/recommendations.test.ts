@@ -124,8 +124,19 @@ describe("compatibility scoring", () => {
 });
 
 describe("option selection", () => {
-  it("returns three options", () => {
+  it("returns up to five options", () => {
     const result = recommend(MOCK_RESTAURANTS, [preference()]);
+    expect(result.candidates).toHaveLength(5);
+  });
+
+  it("returns fewer than five when the area has little to offer", () => {
+    const sparse = MOCK_RESTAURANTS.slice(0, 2);
+    const result = recommend(sparse, [preference()]);
+    expect(result.candidates).toHaveLength(2);
+  });
+
+  it("honours an explicit limit", () => {
+    const result = recommend(MOCK_RESTAURANTS, [preference()], { limit: 3 });
     expect(result.candidates).toHaveLength(3);
   });
 
@@ -142,7 +153,7 @@ describe("option selection", () => {
   it("prefers meaningfully different cuisines", () => {
     const result = recommend(MOCK_RESTAURANTS, [preference()]);
     const cuisines = new Set(result.candidates.map((candidate) => candidate.restaurant.cuisine));
-    expect(cuisines.size).toBe(3);
+    expect(cuisines.size).toBe(result.candidates.length);
   });
 
   it("excludes vetoed restaurants", () => {

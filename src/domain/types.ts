@@ -12,11 +12,17 @@ export type DecisionState =
   | "COMPLETED"
   | "CANCELLED";
 
-/** Linq/Places convention: 1 = $, 4 = $$$$. */
+/** 1 = $, 4 = $$$$. */
 export type PriceLevel = 1 | 2 | 3 | 4;
 
-/** We always present exactly three options, so votes are 1-indexed and bounded. */
-export type OptionNumber = 1 | 2 | 3;
+/**
+ * We present up to five options and aim for at least three, so votes are
+ * 1-indexed and bounded. Fewer than three only happens when the area genuinely
+ * has little to offer once everyone's restrictions are applied.
+ */
+export const MAX_OPTIONS = 5;
+
+export type OptionNumber = 1 | 2 | 3 | 4 | 5;
 
 export const CUISINES = [
   "mexican",

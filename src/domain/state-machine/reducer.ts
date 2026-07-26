@@ -69,6 +69,10 @@ export function transition(previous: SessionSnapshot, event: InboundEvent): Tran
       return result(snapshot, [reply(copy.OPTED_IN)]);
     case "HELP":
       return result(snapshot, [reply(copy.HELP)]);
+    case "DETAILS":
+      // Asking about an option is a question, not a move in the vote, so it is
+      // answered in whatever state the session happens to be in.
+      return detailsReply(snapshot, command.option);
     case "CANCEL":
       if (snapshot.state === "COMPLETED" || snapshot.state === "CANCELLED") {
         return result(snapshot, [reply(copy.NOTHING_RUNNING)]);
@@ -169,6 +173,34 @@ function inPreferences(
   }
 }
 
+function detailsReply(
+  snapshot: SessionSnapshot,
+  option: OptionNumber | null,
+): TransitionResult {
+  if (snapshot.candidates.length === 0) {
+    return result(snapshot, [reply(copy.NO_OPTIONS_YET)]);
+  }
+
+  if (option == null) {
+    // Once a decision is made, a bare "details" can only mean the winner.
+    const leader = tally(snapshot.candidates, snapshot.ballots).standings[0]?.candidate;
+    if (snapshot.state === "COMPLETED" && leader) {
+      return result(snapshot, [reply(copy.placeDetails(leader.restaurant), true)]);
+    }
+    return result(snapshot, [
+      reply(`Which one? Reply DETAILS ${copy.optionList(snapshot.candidates.length)}.`),
+    ]);
+  }
+
+  const candidate = snapshot.candidates[option - 1];
+  if (!candidate) {
+    return result(snapshot, [
+      reply(`There's no option ${option}. Reply ${copy.optionList(snapshot.candidates.length)}.`),
+    ]);
+  }
+  return result(snapshot, [reply(copy.placeDetails(candidate.restaurant), true)]);
+}
+
 function inVoting(
   snapshot: SessionSnapshot,
   command: Command,
@@ -179,7 +211,9 @@ function inVoting(
   const castBallot = (option: OptionNumber, veto: boolean): TransitionResult => {
     const candidate = snapshot.candidates[option - 1];
     if (!candidate) {
-      return result(snapshot, [reply(`There's no option ${option}. Reply 1, 2, or 3.`)]);
+      return result(snapshot, [
+        reply(`There's no option ${option}. Reply ${copy.optionList(snapshot.candidates.length)}.`),
+      ]);
     }
     const ballot: Ballot = { memberId, candidateId: candidate.restaurant.id, veto };
     snapshot.ballots.push(ballot);
@@ -194,7 +228,11 @@ function inVoting(
     case "DONE":
       if (!canForceClose(snapshot.ballots)) {
         return result(snapshot, [
-          reply("I need at least two votes before closing. Reply 1, 2, or 3."),
+          reply(
+            `I need at least two votes before closing. Reply ${copy.optionList(
+              snapshot.candidates.length,
+            )}.`,
+          ),
         ]);
       }
       return maybeCloseVoting(snapshot, true);

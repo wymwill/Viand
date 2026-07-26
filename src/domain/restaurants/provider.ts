@@ -19,6 +19,14 @@ export interface Restaurant {
   /** Dietary requirements this restaurant can accommodate. */
   accommodates: DietaryRequirement[];
   openNow: boolean;
+  /** The place's own site, when the source publishes one. */
+  website?: string | null;
+  phone?: string | null;
+  /**
+   * How thoroughly the source describes this listing, 0–1. Used as a weak
+   * stand-in for a rating on sources that have none — see `scoring.ts`.
+   */
+  completeness?: number;
 }
 
 export interface RestaurantSearchInput {
@@ -32,7 +40,7 @@ export interface RestaurantSearchInput {
 }
 
 /** Where a set of results came from. Surfaced to the group, never inferred. */
-export type RestaurantSource = "mock" | "google_places";
+export type RestaurantSource = "mock" | "osm";
 
 export interface RestaurantSearchResult {
   restaurants: Restaurant[];
@@ -53,16 +61,9 @@ export interface RestaurantSearchResult {
 export const MOCK_SOURCE_LABEL =
   "Demo results from a fixed sample catalogue — not live listings.";
 
-export const GOOGLE_PLACES_SOURCE_LABEL = "Live results from Google Places.";
+export const OSM_SOURCE_LABEL = "Live results from OpenStreetMap.";
 
 export interface RestaurantProvider {
   search(input: RestaurantSearchInput): Promise<RestaurantSearchResult>;
 }
 
-/** Thrown by providers that are wired up but not configured for this environment. */
-export class RestaurantProviderNotConfiguredError extends Error {
-  constructor(providerName: string, detail: string) {
-    super(`${providerName} is not configured: ${detail}`);
-    this.name = "RestaurantProviderNotConfiguredError";
-  }
-}

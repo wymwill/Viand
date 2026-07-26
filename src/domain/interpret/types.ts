@@ -43,7 +43,7 @@ export interface InterpretInput {
   command: Command;
   /** What the session is currently waiting for. */
   state: DecisionState;
-  /** Names of the three options. Present only while voting. */
+  /** Names of the options on the table. Present only while voting. */
   optionNames?: readonly string[];
 }
 
@@ -60,6 +60,7 @@ export const INTERPRETER_INTENTS = [
   "PICK_A_PLACE",
   "VOTE",
   "VETO",
+  "DETAILS",
   "DONE",
   "STATUS",
   "CHANGE",
@@ -82,8 +83,8 @@ export const INTERPRETATION_JSON_SCHEMA = {
   type: "object",
   properties: {
     intent: { type: "string", enum: [...INTERPRETER_INTENTS] },
-    /** 1–3 for VOTE/VETO, 0 when no option was named. */
-    option: { type: "integer", enum: [0, 1, 2, 3] },
+    /** 1–5 for VOTE/VETO, 0 when no option was named. */
+    option: { type: "integer", enum: [0, 1, 2, 3, 4, 5] },
     preference: {
       type: "object",
       properties: {
@@ -125,7 +126,7 @@ export const INTERPRETATION_JSON_SCHEMA = {
  */
 const modelOutputSchema = z.object({
   intent: z.enum(INTERPRETER_INTENTS),
-  option: z.number().int().min(0).max(3),
+  option: z.number().int().min(0).max(5),
   preference: z.object({
     preferredCuisines: z.array(z.enum(CUISINES)),
     excludedCuisines: z.array(z.enum(CUISINES)),
@@ -150,6 +151,11 @@ function commandFromIntent(output: InterpreterModelOutput, input: InterpretInput
       const option = output.option as OptionNumber;
       return output.intent === "VOTE" ? { kind: "VOTE", option } : { kind: "VETO", option };
     }
+    case "DETAILS":
+      return {
+        kind: "DETAILS",
+        option: output.option === 0 ? null : (output.option as OptionNumber),
+      };
     case "PICK_A_PLACE":
       return { kind: "PICK_A_PLACE" };
     case "DONE":

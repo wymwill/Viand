@@ -41,10 +41,13 @@ const schema = z
     AI_INTERPRETER_MAX_INPUT_CHARS: z.coerce.number().int().positive().default(500),
     AI_INTERPRETER_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.6),
 
-    // Live restaurant data. Off by default for the same reason.
+    // Live restaurant data from OpenStreetMap: free, keyless, unmetered.
     USE_MOCK_RESTAURANTS: booleanish.default(true),
-    GOOGLE_MAPS_API_KEY: z.string().optional(),
-    GOOGLE_PLACES_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
+    OVERPASS_URL: z.string().url().default("https://overpass-api.de/api/interpreter"),
+    NOMINATIM_URL: z.string().url().default("https://nominatim.openstreetmap.org/search"),
+    /** Nominatim's usage policy requires an identifying User-Agent. */
+    OSM_USER_AGENT: z.string().default("Viand/0.1 (restaurant decision bot)"),
+    OSM_TIMEOUT_MS: z.coerce.number().int().positive().default(12_000),
   })
   .superRefine((env, ctx) => {
     // When the real Linq provider is selected, its credentials become required.
@@ -68,13 +71,6 @@ const schema = z
       });
     }
 
-    if (!env.USE_MOCK_RESTAURANTS && !env.GOOGLE_MAPS_API_KEY) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["GOOGLE_MAPS_API_KEY"],
-        message: "GOOGLE_MAPS_API_KEY is required when USE_MOCK_RESTAURANTS=false",
-      });
-    }
   });
 
 export type Env = z.infer<typeof schema>;

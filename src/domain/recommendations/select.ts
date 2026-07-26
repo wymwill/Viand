@@ -1,5 +1,5 @@
 import type { Restaurant } from "../restaurants/provider";
-import type { DietaryRequirement, MemberPreference } from "../types";
+import { MAX_OPTIONS, type DietaryRequirement, type MemberPreference } from "../types";
 import { hardRestrictions, isEligibleForAll, scoreRestaurant, type GroupScore } from "./scoring";
 
 export interface Candidate {
@@ -20,7 +20,7 @@ export interface RecommendationResult {
 export interface RecommendOptions {
   /** Restaurant ids explicitly vetoed; treated as a hard restriction. */
   vetoedRestaurantIds?: readonly string[];
-  /** How many options to present. The product always shows three. */
+  /** How many options to present. Defaults to the product maximum of five. */
   limit?: number;
 }
 
@@ -54,7 +54,7 @@ export function recommend(
   preferences: readonly MemberPreference[],
   options: RecommendOptions = {},
 ): RecommendationResult {
-  const limit = options.limit ?? 3;
+  const limit = options.limit ?? MAX_OPTIONS;
   const vetoed = new Set(options.vetoedRestaurantIds ?? []);
 
   const eligible = restaurants.filter(

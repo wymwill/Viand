@@ -62,10 +62,24 @@ async function resolveRecommendation(
   restaurants: RestaurantProvider,
 ): Promise<void> {
   const preferences = preferenceList(snapshot);
-  const found = await restaurants.search({
-    locationText: snapshot.locationText ?? "",
-    radiusMiles: snapshot.radiusMiles,
-  });
+
+  let found;
+  try {
+    found = await restaurants.search({
+      locationText: snapshot.locationText ?? "",
+      radiusMiles: snapshot.radiusMiles,
+    });
+  } catch (error) {
+    // The group gets a friendly retry, but an operator still needs to know why
+    // searches are failing — swallowing this entirely makes a broken key or a
+    // rate-limited source indistinguishable from bad luck.
+    console.warn("[viand] restaurant search failed:", error);
+    // Keep collecting so DONE can simply be sent again once the source
+    // recovers; the group's answers are still good.
+    snapshot.state = "COLLECTING_PREFERENCES";
+    outbound.push({ text: copy.SEARCH_UNAVAILABLE });
+    return;
+  }
 
   const { candidates, needsAllergyDisclaimer } = recommend(found.restaurants, preferences, {
     vetoedRestaurantIds: vetoedRestaurantIds(snapshot),

@@ -24,6 +24,9 @@ afterEach(() => {
 });
 
 describe("dashboard simulator route", () => {
+  // USE_MOCK_LINQ=false with no credentials makes getEnv() throw. The dashboard
+  // must survive that: it never sends through Linq, and its restaurant provider
+  // has to degrade to the demo catalogue rather than take the whole route down.
   it("stays on the mock provider when live Linq mode is enabled", async () => {
     const request = new Request("http://localhost:3000/api/simulate", {
       method: "POST",

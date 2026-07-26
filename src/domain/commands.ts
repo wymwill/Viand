@@ -10,6 +10,8 @@ export type Command =
   | { kind: "CANCEL" }
   | { kind: "VOTE"; option: OptionNumber }
   | { kind: "VETO"; option: OptionNumber }
+  /** Null when they asked for details without saying which option. */
+  | { kind: "DETAILS"; option: OptionNumber | null }
   | { kind: "STOP" }
   | { kind: "START" }
   /** Anything that is not a command — preference text, location text, chatter. */
@@ -101,10 +103,18 @@ const EXACT_ALIASES: ReadonlyArray<readonly [ReadonlySet<string>, CommandKind]> 
 ];
 
 /** "1", "#1", "option 1", "i vote 1", "number 1" all normalize into this. */
-const VOTE_PATTERN = /^(?:(?:i\s+)?vote(?:\s+for)?|option|number|choice)?\s*([123])$/;
+const VOTE_PATTERN = /^(?:(?:i\s+)?vote(?:\s+for)?|option|number|choice)?\s*([1-5])$/;
+
+/**
+ * "details 2", "more about 2", "tell me more about 3", or a bare "details".
+ * Checked after the exact aliases so a lone "info" stays HELP, and before the
+ * vote patterns so "option 2 details" is not read as a ballot.
+ */
+const DETAILS_PATTERN =
+  /^(?:tell me more(?:\s+about)?|tell me about|more info(?:rmation)?|more about|details?|info)\s*(?:about|on|for)?\s*(?:option|number)?\s*([1-5])?$/;
 
 /** "veto 2", "veto2", "veto #2", "i veto 2". */
-const VETO_PATTERN = /^(?:i\s+)?veto(?:\s+for)?\s*([123])$/;
+const VETO_PATTERN = /^(?:i\s+)?veto(?:\s+for)?\s*([1-5])$/;
 
 export function parseCommand(raw: string): Command {
   const text = normalize(raw);
@@ -118,6 +128,12 @@ export function parseCommand(raw: string): Command {
 
   for (const [aliases, kind] of EXACT_ALIASES) {
     if (aliases.has(text)) return { kind } as Command;
+  }
+
+  const details = DETAILS_PATTERN.exec(text);
+  if (details) {
+    const option = details[1] ? (Number(details[1]) as OptionNumber) : null;
+    return { kind: "DETAILS", option };
   }
 
   const veto = VETO_PATTERN.exec(text);

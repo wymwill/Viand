@@ -64,7 +64,7 @@ const STAGE_HINTS: Record<DecisionState, string> = {
   COLLECTING_LOCATION: "Viand is waiting for an area to search near.",
   COLLECTING_PREFERENCES: "Viand is collecting what each person wants to eat.",
   READY_TO_RECOMMEND: "Viand is about to produce options.",
-  VOTING: "Viand has presented three options and is collecting votes.",
+  VOTING: "Viand has presented the options and is collecting votes.",
   COMPLETED: "The last decision finished.",
   CANCELLED: "The last decision was cancelled.",
 };
