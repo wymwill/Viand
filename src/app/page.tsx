@@ -1,235 +1,318 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { LinqStatus } from "@/app/api/linq/status/route";
+import { useEffect, useState } from "react";
+import type { ViandNumber } from "@/app/api/number/route";
+import ChatConsole from "@/components/ChatConsole";
+import NumberDialog from "@/components/NumberDialog";
+import Reveal from "@/components/Reveal";
+import { PhoneCards, PhoneThread, PhoneVote } from "@/components/PhoneMocks";
 
-type ChatLine = {
-  id: string;
-  from: "you" | "bot";
-  text: string;
-};
-
-type SimulationResponse = {
-  replies?: string[];
-  snapshot?: { state: string; locationText: string | null } | null;
-  error?: string;
-};
-
-const starterMessages = ["Hey Viand", "Downtown Berkeley", "Mexican under $25", "done"];
-
-export default function Dashboard() {
-  const [message, setMessage] = useState("");
-  const [lines, setLines] = useState<ChatLine[]>([
-    {
-      id: "welcome",
-      from: "bot",
-      text: "Ready when your group is. Say “Hey Viand” to begin.",
-    },
-  ]);
-  const [state, setState] = useState("IDLE");
-  const [location, setLocation] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
-  const [connection, setConnection] = useState<LinqStatus>({
-    mode: "demo",
-    label: "CHECKING LINQ",
-    phoneNumber: null,
-    phoneDisplay: "Checking connection…",
-    lineHealth: null,
+export default function Home() {
+  const [number, setNumber] = useState<ViandNumber>({
+    display: "(555) 555-0123",
+    e164: "+15555550123",
   });
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   useEffect(() => {
-    void fetch("/api/linq/status", { cache: "no-store" })
-      .then((response) => response.json() as Promise<LinqStatus>)
-      .then(setConnection)
-      .catch(() =>
-        setConnection({
-          mode: "error",
-          label: "LINQ UNREACHABLE",
-          phoneNumber: null,
-          phoneDisplay: "Check server configuration",
-          lineHealth: null,
-        }),
-      );
+    void fetch("/api/number", { cache: "no-store" })
+      .then((response) => response.json() as Promise<ViandNumber>)
+      .then(setNumber)
+      .catch(() => {
+        /* Keep the configured fallback already in state. */
+      });
   }, []);
 
-  const nextHint = useMemo(() => {
-    if (state === "IDLE") return "Say “Hey Viand” to begin";
-    if (state === "COLLECTING_LOCATION") return "Try a neighborhood, ZIP, or address";
-    if (state === "COLLECTING_PREFERENCES") return "Add a cuisine, budget, or dietary need";
-    if (state === "VOTING") return "Vote 1, 2, or 3";
-    return "Say “Hey Viand” to begin again";
-  }, [state]);
-
-  async function send(text: string) {
-    const clean = text.trim();
-    if (!clean || sending) return;
-
-    setSending(true);
-    setLines((current) => [
-      ...current,
-      { id: crypto.randomUUID(), from: "you", text: clean },
-    ]);
-    setMessage("");
-
-    try {
-      const response = await fetch("/api/simulate", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text: clean, chatId: "dashboard-demo", sender: "you" }),
-      });
-      const data = (await response.json()) as SimulationResponse;
-      if (!response.ok) throw new Error(data.error ?? "Message failed");
-
-      setLines((current) => [
-        ...current,
-        ...(data.replies ?? []).map((reply) => ({
-          id: crypto.randomUUID(),
-          from: "bot" as const,
-          text: reply,
-        })),
-      ]);
-      if (data.snapshot) {
-        setState(data.snapshot.state);
-        setLocation(data.snapshot.locationText);
-      }
-    } catch (error) {
-      setLines((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          from: "bot",
-          text: error instanceof Error ? error.message : "Something went wrong.",
-        },
-      ]);
-    } finally {
-      setSending(false);
-    }
-  }
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    void send(message);
-  }
+  const openDialog = () => setDialogOpen(true);
 
   return (
     <>
-      <a className="skip-link" href="#simulator">Skip to simulator</a>
-      <main>
-        <header className="topbar">
-          <a className="brand" href="#" aria-label="Viand home">
-            <span className="brand-mark">
-              <Image src="/brand/viand-logo.png" alt="" width={38} height={38} priority />
-            </span>
-            <span>VIAND</span>
+      <a className="skip-link" href="#simulator">
+        Skip to the live demo
+      </a>
+
+      <header className="site-nav">
+        <div className="wrap nav-inner">
+          <a className="wordmark" href="#top" aria-label="Viand home">
+            <Image src="/brand/viand-icon.png" alt="" width={30} height={30} priority />
+            <span>Viand</span>
           </a>
-          <span className={`connection ${connection.mode}`}>
-            <i /> {connection.label}
-          </span>
-        </header>
 
+          <nav className="nav-links" aria-label="Primary">
+            <a href="#simulator">Live demo</a>
+            <a href="#discovery">How it works</a>
+            <a href="#lounge">Voting</a>
+          </nav>
+
+          <div className="nav-end">
+            <span className="nav-number">{number.display}</span>
+            <button className="btn btn-primary btn-sm" type="button" onClick={openDialog}>
+              Text Viand
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main id="top">
+        {/* ---------- Hero: copy left, live demo right ---------- */}
         <section className="hero">
-          <div className="hero-copy">
-            <p className="eyebrow">MESSAGE IN. DINNER OUT.</p>
-            <h1>Stop debating.<br /><em>Pick a place.</em></h1>
-            <p className="lede">
-              One tiny bot for the group chat. It gathers the area, reads everyone’s
-              preferences, and returns three options worth voting on.
-            </p>
-            <div className="imessage-action">
-              {connection.mode === "connected" && connection.phoneNumber ? (
-                <a href={`sms:${connection.phoneNumber}?body=EAT`}>
-                  OPEN IN MESSAGES ↗
+          <span className="orb orb-a" aria-hidden="true" />
+          <span className="orb orb-b" aria-hidden="true" />
+
+          <div className="wrap hero-inner">
+            <Reveal className="hero-copy">
+              <p className="eyebrow">Message in · dinner out</p>
+              <h1 className="display">
+                Find where to eat,
+                <br />
+                <em>together.</em>
+              </h1>
+              <p className="lede">
+                Viand sits in your group chat. Tell it roughly where you are and what
+                everyone’s feeling, and it comes back with three spots — then counts
+                the votes so nobody has to.
+              </p>
+
+              <div className="hero-actions">
+                <button className="btn btn-primary" type="button" onClick={openDialog}>
+                  Text Viand
+                </button>
+                <a className="btn btn-ghost" href="#discovery">
+                  See how it works
                 </a>
-              ) : (
-                <a href="#connection-guide">CONNECT LINQ ↘</a>
-              )}
-              <span>
-                {connection.phoneDisplay}
-                {connection.lineHealth ? ` · ${connection.lineHealth}` : ""}
-              </span>
-            </div>
-            <div className="flow" aria-label="How Viand works">
-              <span><b>01</b> TEXT</span>
-              <span><b>02</b> FILTER</span>
-              <span><b>03</b> PICK</span>
-            </div>
-          </div>
-
-          <section className="console" id="simulator" aria-labelledby="console-title">
-            <div className="console-head">
-              <div>
-                <p>LIVE MVP</p>
-                <h2 id="console-title">Conversation simulator</h2>
               </div>
-              <span className="pulse">● ACTIVE</span>
-            </div>
 
-            <div className="status-grid">
-              <div><span>STATE</span><strong>{state.replaceAll("_", " ")}</strong></div>
-              <div><span>AREA</span><strong>{location ?? "WAITING"}</strong></div>
-              <div><span>STORE</span><strong>IN MEMORY</strong></div>
-            </div>
+              <p className="hero-note">
+                Text <strong>{number.display}</strong> — no app, no signup.
+              </p>
 
-            <div className="thread" aria-live="polite">
-              {lines.map((line) => (
-                <div className={`message ${line.from}`} key={line.id}>
+              <ol className="flow" aria-label="How Viand works">
+                <li>
+                  <b>01</b> Text
+                </li>
+                <li>
+                  <b>02</b> Filter
+                </li>
+                <li>
+                  <b>03</b> Pick
+                </li>
+              </ol>
+            </Reveal>
+
+            <Reveal className="hero-console" delay={140}>
+              <ChatConsole />
+            </Reveal>
+          </div>
+        </section>
+
+        {/* ---------- Full-bleed atmospheric moment ---------- */}
+        <section className="plate" aria-labelledby="plate-title">
+          <Image
+            className="plate-img"
+            src="/img/table.jpg"
+            alt="An overhead view of a shared table: pasta, a tomato and burrata salad, torn bread, and glasses of white wine in afternoon light."
+            fill
+            sizes="100vw"
+          />
+          <span className="plate-veil" aria-hidden="true" />
+          <Reveal className="wrap plate-copy">
+            <p className="eyebrow light">The table</p>
+            <p className="pull" id="plate-title">
+              Nobody wants to plan dinner.
+              <br />
+              Everybody wants to be at it.
+            </p>
+          </Reveal>
+        </section>
+
+        {/* ---------- What it actually runs on ---------- */}
+        <section className="trust">
+          <Reveal className="wrap trust-inner stagger">
+            <span>Real places from OpenStreetMap</span>
+            <span>Works in iMessage</span>
+            <span>Reads plain English</span>
+            <span>Nothing to install</span>
+          </Reveal>
+        </section>
+
+        {/* ---------- Feature: discovery ---------- */}
+        <section className="feature" id="discovery">
+          <div className="wrap feature-grid">
+            <Reveal className="feature-media">
+              <PhoneThread />
+            </Reveal>
+
+            <Reveal className="feature-copy" delay={120}>
+              <p className="eyebrow">How it works</p>
+              <h2 className="section-title">It lives where the arguing happens.</h2>
+              <p className="lead">
+                No app, no link, no third tab. Viand just answers in the thread you’re
+                already ignoring each other in — and it only asks the two questions
+                that actually narrow things down.
+              </p>
+
+              <ul className="checklist">
+                <li>
+                  <b>Right in your thread</b>
+                  <span>A real iMessage number, not a bot account or an invite link.</span>
+                </li>
+                <li>
+                  <b>Just talk normally</b>
                   <span>
-                    {line.from === "bot" ? (
-                      <Image src="/brand/viand-logo.png" alt="" width={24} height={24} />
-                    ) : "YOU"}
+                    “Mexican, under $25, one of us is vegetarian” is a perfectly good
+                    answer.
                   </span>
-                  <p>{line.text}</p>
-                </div>
-              ))}
-              {sending && <div className="typing" aria-label="Viand is replying">•••</div>}
-            </div>
-
-            <div className="quick-actions" aria-label="Example messages">
-              {starterMessages.map((starter) => (
-                <button key={starter} type="button" onClick={() => void send(starter)}>
-                  {starter}
-                </button>
-              ))}
-            </div>
-
-            <form onSubmit={submit}>
-              <label htmlFor="message">Message</label>
-              <div className="composer">
-                <input
-                  id="message"
-                  value={message}
-                  onChange={(event) => setMessage(event.target.value)}
-                  placeholder={nextHint}
-                  disabled={sending}
-                  autoComplete="off"
-                />
-                <button type="submit" disabled={sending || !message.trim()}>
-                  SEND ↗
-                </button>
-              </div>
-            </form>
-          </section>
-        </section>
-
-        <section className="connection-guide" id="connection-guide" aria-labelledby="connection-title">
-          <div>
-            <p className="eyebrow">LIVE CONNECTION</p>
-            <h2 id="connection-title">Bring your Linq number.</h2>
+                </li>
+                <li>
+                  <b>Real places, real walking distance</b>
+                  <span>Everything comes from live map data around wherever you said.</span>
+                </li>
+              </ul>
+            </Reveal>
           </div>
-          <ol>
-            <li><b>01</b><span>Add your API key and provisioned number to <code>.env.local</code>.</span></li>
-            <li><b>02</b><span>Set <code>APP_BASE_URL</code> to a public HTTPS URL and run <code>npm run linq:register-webhook</code>.</span></li>
-            <li><b>03</b><span>Save the returned webhook secret, set <code>USE_MOCK_LINQ=false</code>, and restart.</span></li>
-          </ol>
-          <p className="endpoint">POST /api/webhooks/linq?version=2026-02-03</p>
         </section>
 
-        <footer>
-          <p>LINQ WEBHOOK → MESSAGE ENGINE → LOCAL RECOMMENDATIONS</p>
-          <p>NO DATABASE · PROCESS RESTARTS CLEAR STATE</p>
-        </footer>
+        {/* ---------- Dark band: curation ---------- */}
+        <section className="band">
+          <div className="wrap feature-grid">
+            <Reveal className="feature-copy">
+              <p className="eyebrow light">The shortlist</p>
+              <h2 className="section-title light">
+                Three options.
+                <br />
+                <em>Not three hundred.</em>
+              </h2>
+              <p className="lead light">
+                A search box hands you a list and a brand new problem. Viand hands you
+                a shortlist your group can actually agree on — close enough to walk
+                to, cheap enough to say yes to, open when you want it.
+              </p>
+
+              <div className="band-cards stagger">
+                <article>
+                  <h3>Always three</h3>
+                  <p>Short enough that the thread lands on one instead of scrolling.</p>
+                </article>
+                <article>
+                  <h3>Everyone’s stuff counts</h3>
+                  <p>One vegetarian and a $25 ceiling are filters, not footnotes.</p>
+                </article>
+              </div>
+            </Reveal>
+
+            <Reveal className="feature-media" delay={120}>
+              <PhoneCards />
+            </Reveal>
+          </div>
+        </section>
+
+        {/* ---------- Feature: voting ---------- */}
+        <section className="feature" id="lounge">
+          <div className="wrap feature-grid">
+            <Reveal className="feature-media">
+              <PhoneVote />
+            </Reveal>
+
+            <Reveal className="feature-copy" delay={120}>
+              <p className="eyebrow">Voting</p>
+              <h2 className="section-title">The vote settles it.</h2>
+              <p className="lead">
+                Everybody replies with a number. Viand keeps score as the answers land
+                and calls it once the room has spoken — no spreadsheet, and nobody
+                stuck deciding for five people.
+              </p>
+
+              <ul className="checklist">
+                <li>
+                  <b>Reply 1, 2, or 3</b>
+                  <span>That’s the whole interface. One digit.</span>
+                </li>
+                <li>
+                  <b>Counted as they come in</b>
+                  <span>The tally updates right in the thread.</span>
+                </li>
+              </ul>
+            </Reveal>
+          </div>
+        </section>
+
+        {/* ---------- Closing call to action ---------- */}
+        <section className="closer" id="text-viand">
+          <Reveal className="wrap closer-inner">
+            <p className="eyebrow">Ready when you are</p>
+            <h2 className="section-title">Hungry now?</h2>
+            <p className="lead">
+              Text Viand and it takes it from there. Works one-on-one, and works even
+              better once it’s in the group chat.
+            </p>
+
+            <button className="closer-number" type="button" onClick={openDialog}>
+              {number.display}
+            </button>
+
+            <div className="hero-actions">
+              <button className="btn btn-primary" type="button" onClick={openDialog}>
+                Text Viand
+              </button>
+              <a className="btn btn-ghost" href="#simulator">
+                Try the demo first
+              </a>
+            </div>
+          </Reveal>
+        </section>
       </main>
+
+      <footer className="site-footer">
+        <div className="wrap footer-grid">
+          <div className="footer-brand">
+            <span className="wordmark static">
+              <Image src="/brand/viand-icon.png" alt="" width={28} height={28} />
+              <span>Viand</span>
+            </span>
+            <p>Message in, dinner out. An easier way for a group to land on a table.</p>
+          </div>
+
+          <div>
+            <h4>On this page</h4>
+            <ul>
+              <li>
+                <a href="#simulator">Live demo</a>
+              </li>
+              <li>
+                <a href="#discovery">How it works</a>
+              </li>
+              <li>
+                <a href="#lounge">Voting</a>
+              </li>
+              <li>
+                <a href="#text-viand">Text Viand</a>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <h4>Good to know</h4>
+            <ul>
+              <li>Text {number.display}</li>
+              <li>Restaurants from OpenStreetMap</li>
+              <li>Nothing to download</li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="wrap footer-base">
+          <p>© {new Date().getFullYear()} Viand</p>
+          <p>Built on OpenStreetMap</p>
+        </div>
+      </footer>
+
+      <NumberDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        display={number.display}
+        e164={number.e164}
+      />
     </>
   );
 }

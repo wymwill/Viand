@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans } from "next/font/google";
+import { Fraunces, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
 const jakarta = Plus_Jakarta_Sans({
@@ -9,9 +9,18 @@ const jakarta = Plus_Jakarta_Sans({
   display: "swap",
 });
 
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  style: ["normal", "italic"],
+  variable: "--font-serif",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "Viand — stop debating",
-  description: "A Linq-powered restaurant picker for group chats.",
+  title: "Viand — find where to eat, together",
+  description:
+    "A Linq-powered restaurant picker that lives in the group chat. It reads the thread, filters on everyone's constraints, and returns three places worth voting on.",
   icons: {
     icon: "/brand/viand-icon.png",
     apple: "/brand/viand-logo.png",
@@ -22,7 +31,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={jakarta.variable}>
+    <html lang="en" className={`${jakarta.variable} ${fraunces.variable}`}>
       <body>{children}</body>
     </html>
   );
