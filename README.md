@@ -41,34 +41,46 @@ It is deliberately additive and cannot make the bot worse:
 
 ## Optional: live restaurants
 
-With `USE_MOCK_RESTAURANTS=false`, results come from **Google Places**, with
-**OpenStreetMap** as a fallback. A typed neighborhood, ZIP code, or address is
-geocoded; a shared location — a coordinate pair or a map link — is used
-directly with no geocoding call. Either way results are normalised to the same
-shape as the demo catalogue, and the group is told which source answered.
+With `USE_MOCK_RESTAURANTS=false`, results come from **OpenStreetMap**. A typed
+neighborhood, ZIP code, or address is geocoded through Nominatim; a shared
+location — a coordinate pair or a map link — is used directly with no geocoding
+call. Restaurants are then fetched from Overpass and normalised to the same
+shape as the demo catalogue. The group is always told which source answered.
 
-- **Google Places** is primary. It has ratings and prices, which matter because
-  `maxPriceLevel` is a hard restriction. Needs `GOOGLE_MAPS_API_KEY` with the
-  Places API (New) and Geocoding API enabled. Its one blind spot is diet:
-  it publishes `servesVegetarianFood` and nothing about vegan, halal, kosher,
-  or allergens, and Viand infers nothing from cuisine — a dietary claim about a
-  real restaurant is something an allergic person acts on.
-- **OpenStreetMap** is the keyless fallback, and serves alone when no Google
-  key is set. It carries the `diet:*` tags Google lacks, so halal, kosher,
-  gluten-free, and vegan requests can succeed. Only `yes` and `only` count —
-  `limited` is rejected, because a hard restriction must not be satisfied by
-  “a couple of things on the menu”. It has no ratings or prices.
+OSM carries useful `diet:*` tags, so halal, kosher, gluten-free, vegetarian, and
+vegan requests can be checked without inferring dietary support from cuisine.
+Only `yes` and `only` count; `limited` is rejected because a hard restriction
+must not be satisfied by “a couple of things on the menu”. OSM does not provide
+dependable ratings or prices, and its `opening_hours` grammar is not currently
+parsed.
 
-The fallback triggers when the primary throws **or returns nothing**: a source
-that is reachable but has no listings for the area hasn't answered the group's
-question. If both come up empty that is a real answer and is kept; only when
-both genuinely fail does the group get a retryable “couldn't reach the
-listings” message instead of an error.
+Overpass endpoints are tried in order when one is overloaded. Successful
+searches are cached in the current server process and can be served stale if
+the upstream source later fails. This protects a warm process from short
+outages, but it is not a durable cross-instance cache.
 
-OSM's `opening_hours` grammar is not parsed, so `openNow` is always true on
-that provider. Nominatim and Overpass are shared volunteer services with usage
-policies — set `OSM_USER_AGENT`, and point `NOMINATIM_URL` / `OVERPASS_URL` at
-a paid or self-hosted instance for real traffic.
+Nominatim and the public Overpass instances are shared volunteer services with
+usage policies and operational limits. Set an identifying `OSM_USER_AGENT`.
+For sustained production traffic, configure `NOMINATIM_URL` and
+`OVERPASS_URL` to paid or self-hosted instances rather than relying on the
+public endpoints.
+
+## Choosing a messaging transport
+
+`MESSAGING_PROVIDER` selects what actually moves messages:
+
+| Value | Transport | Cost |
+| --- | --- | --- |
+| `mock` | In-memory, records sends | free |
+| `linq` | iMessage via Linq | per Linq's plan |
+| `telegram` | Telegram Bot API | free, no per-message fee |
+
+Leave it unset to keep the older behaviour: `USE_MOCK_LINQ=true` means `mock`,
+`false` means `linq`. Credentials are only required for the transport actually
+selected, so a Telegram deploy needs no `LINQ_*` variables.
+
+The browser simulator at `/` always uses the mock runtime and never spends a
+real messaging account, whichever transport is configured.
 
 ## Connect Linq
 
@@ -93,6 +105,39 @@ https://your-host/api/webhooks/linq?version=2026-02-03
 The route passes the unmodified request body and headers to
 `client.webhooks.unwrap()` before processing.
 
+## Connect Telegram
+
+Free alternative to iMessage, with native group support.
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) (`/newbot`) and copy
+   the token it prints.
+2. **Disable privacy mode**: BotFather → `/setprivacy` → pick the bot →
+   *Disable*. Without this a bot in a group only receives messages that
+   `@mention` it, so Viand would never see a member type "Mexican under $25".
+   Remove and re-add the bot to any group it already joined.
+3. In `.env.local` set `MESSAGING_PROVIDER=telegram`, `TELEGRAM_BOT_TOKEN`,
+   `TELEGRAM_BOT_USERNAME` (without the `@`), a public HTTPS `APP_BASE_URL`,
+   and any random string as `TELEGRAM_WEBHOOK_SECRET`.
+4. Register the webhook:
+
+```sh
+npm run telegram:register-webhook
+```
+
+The resulting webhook targets:
+
+```text
+https://your-host/api/webhooks/telegram
+```
+
+Telegram echoes the secret back in `X-Telegram-Bot-Api-Secret-Token` on every
+delivery; the route compares it in constant time and rejects anything else with
+a 401. Deduplication keys off `update_id`, so Telegram's retries are safe.
+
+A Telegram bot cannot open a conversation — someone has to message it first —
+which is why `createChat` is unsupported on this transport. Nothing in the
+conversation flow needs it.
+
 ## Scope
 
 - State and webhook deduplication are in memory and reset on restart.
@@ -100,7 +145,7 @@ The route passes the unmodified request body and headers to
   live data is switched on.
 - The dashboard simulator always uses mock messaging, mock restaurants, and the
   deterministic parser, on its own isolated state — an unauthenticated page
-  never spends Linq, restaurant-API, or model quota.
+  never spends Linq, OSM, or model capacity.
 - Supabase, Prisma, user accounts, and deployment are intentionally excluded.
 
 ## Verify

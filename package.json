@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "linq:register-webhook": "node --env-file-if-exists=.env.local scripts/register-linq-webhook.mjs"
+    "linq:register-webhook": "node --env-file-if-exists=.env.local scripts/register-linq-webhook.mjs",
+    "telegram:register-webhook": "node --env-file-if-exists=.env.local scripts/register-telegram-webhook.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

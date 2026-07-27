@@ -3,6 +3,9 @@
 .env
 .env.local
 .env.*.local
+# Timestamped backups made before regenerating .env.local; these hold real keys.
+.env.local.bak.*
+.env*.bak*
 graphify-out/
 node_modules/
 .venv/
