@@ -45,38 +45,17 @@ function getLiveRuntime(): Runtime {
 }
 
 /**
- * The dashboard never sends a real text and never spends model tokens: its chat
- * id is not a real conversation, and the endpoint is unauthenticated.
- *
- * Restaurants are the exception — they follow the configured provider, so the
- * simulator shows the same listings a real group would get. That is the point
- * of the simulator, and the live source costs nothing per request. Note this
- * does put the public dashboard on Overpass, a volunteer-run service: if this
- * is ever exposed to real traffic, point OVERPASS_URL at a paid or self-hosted
- * instance rather than leaning on the shared one.
+ * The dashboard is unauthenticated, so every integration is deterministic and
+ * local: mock messaging, mock restaurants, and the rules interpreter. It must
+ * never spend Linq, OSM, or model capacity regardless of production settings.
  */
 function getSimulationRuntime(): Runtime {
   globalRuntime[SIMULATION_KEY] ??= {
     store: new InMemorySessionStore(),
-    restaurants: simulationRestaurants(),
+    restaurants: new MockRestaurantProvider(),
     interpreter: new DeterministicInterpreter(),
   };
   return globalRuntime[SIMULATION_KEY];
-}
-
-/**
- * Choosing a provider reads the environment, and the environment can be invalid
- * for reasons that have nothing to do with the dashboard — half-entered Linq
- * credentials being the obvious one. The dashboard must never 500 because the
- * live integration is mid-setup, so anything unreadable degrades to the demo
- * catalogue instead of throwing.
- */
-function simulationRestaurants(): RestaurantProvider {
-  try {
-    return getRestaurantProvider();
-  } catch {
-    return new MockRestaurantProvider();
-  }
 }
 
 async function processWith(

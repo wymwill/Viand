@@ -15,9 +15,14 @@ function node(overrides: Record<string, unknown> = {}) {
   };
 }
 
+let lastQuery = "";
+
 function stubFetch(elements: unknown[], onGeocode?: () => void) {
-  return (async (target: RequestInfo | URL) => {
+  return (async (target: RequestInfo | URL, init?: RequestInit) => {
     const url = String(target instanceof Request ? target.url : target);
+    if (!url.includes("nominatim")) {
+      lastQuery = decodeURIComponent(String(init?.body ?? ""));
+    }
     if (url.includes("nominatim")) {
       onGeocode?.();
       return new Response(
@@ -50,6 +55,119 @@ describe("shortLocationLabel", () => {
     expect(shortLocationLabel("2160, Shattuck Avenue, Berkeley, California")).toBe(
       "2160 Shattuck Avenue",
     );
+  });
+});
+
+describe("Overpass endpoint failover", () => {
+  it("moves to the next endpoint when one is overloaded", async () => {
+    const tried: string[] = [];
+    const fetchImpl = (async (target: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(target);
+      if (url.includes("nominatim")) return stubFetch([node()])(target as RequestInfo, init);
+      tried.push(url);
+      // First endpoint is saturated, second answers.
+      if (tried.length === 1) return new Response("", { status: 504 });
+      return new Response(JSON.stringify({ elements: [node()] }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const result = await new OsmRestaurantProvider({
+      fetchImpl,
+      overpassUrl: "https://a.example/api,https://b.example/api",
+    }).search(search);
+
+    expect(tried).toHaveLength(2);
+    expect(result.restaurants).toHaveLength(1);
+  });
+
+  it("bounds total failover time rather than multiplying it", async () => {
+    // Every endpoint hangs. Each attempt must get a slice of the budget, so the
+    // whole thing finishes near timeoutMs rather than timeoutMs × endpoints.
+    const fetchImpl = (async (target: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(target);
+      if (url.includes("nominatim")) return stubFetch([node()])(target as RequestInfo, init);
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+      }) as Promise<Response>;
+    }) as unknown as typeof fetch;
+
+    const started = Date.now();
+    await expect(
+      new OsmRestaurantProvider({
+        fetchImpl,
+        timeoutMs: 9_000,
+        overpassUrl: ["https://a.example/api", "https://b.example/api", "https://c.example/api"],
+      }).search(search),
+    ).rejects.toThrow();
+
+    expect(Date.now() - started).toBeLessThan(12_000);
+  }, 20_000);
+
+  it("reports the last failure when every endpoint is down", async () => {
+    const fetchImpl = (async (target: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(target);
+      if (url.includes("nominatim")) return stubFetch([node()])(target as RequestInfo, init);
+      return new Response("", { status: 504 });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      new OsmRestaurantProvider({
+        fetchImpl,
+        overpassUrl: ["https://a.example/api", "https://b.example/api"],
+      }).search(search),
+    ).rejects.toThrow("504");
+  });
+});
+
+describe("Overpass query cost", () => {
+  it("bounds the query radius well inside the group's search radius", async () => {
+    // Five miles is ~8km; the query must not sweep that far or the public
+    // instance starts returning 504s.
+    await provider([node()]).search({ locationText: "Berkeley", radiusMiles: 5 });
+    const around = /around:(\d+)/.exec(lastQuery);
+    expect(Number(around?.[1])).toBe(3000);
+  });
+
+  it("never asks for more than the group's radius", async () => {
+    await provider([node()]).search({ locationText: "Berkeley", radiusMiles: 0.5 });
+    const around = /around:(\d+)/.exec(lastQuery);
+    expect(Number(around?.[1])).toBeLessThan(1000);
+  });
+
+  it("queries nodes only, with exact tag matches rather than a regex", async () => {
+    await provider([node()]).search(search);
+    // Building outlines roughly double the cost for a small minority of results.
+    expect(lastQuery).not.toContain("way[");
+    // A regex on a tag value defeats Overpass's index.
+    expect(lastQuery).not.toContain("~");
+    expect(lastQuery).toContain('node["amenity"="restaurant"]');
+    expect(lastQuery).toContain('node["amenity"="cafe"]');
+  });
+
+  it("gives Overpass generous time regardless of our own budget", async () => {
+    // Tying this to our budget once set it to 3s, at which point Overpass
+    // returned an empty result with a remark and the group was told there was
+    // nowhere to eat in central Berkeley.
+    await new OsmRestaurantProvider({
+      fetchImpl: stubFetch([node()]),
+      timeoutMs: 4_000,
+      overpassUrl: "https://a.example/api,https://b.example/api",
+    }).search(search);
+    expect(lastQuery).toContain("[timeout:25]");
+  });
+
+  it("treats a remark as a failure rather than an empty neighbourhood", async () => {
+    const fetchImpl = (async (target: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(target);
+      if (url.includes("nominatim")) return stubFetch([node()])(target as RequestInfo, init);
+      return new Response(
+        JSON.stringify({ elements: [], remark: "runtime error: Query timed out" }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+
+    await expect(
+      new OsmRestaurantProvider({ fetchImpl, overpassUrl: "https://a.example/api" }).search(search),
+    ).rejects.toThrow("remark");
   });
 });
 

@@ -26,12 +26,35 @@ import {
  * results from here rank on distance and cuisine fit alone.
  */
 
-const DEFAULT_OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+/**
+ * Tried in order. Independent instances serving the same data, so one being
+ * saturated says nothing about the next.
+ */
+const DEFAULT_OVERPASS_URLS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+];
 const DEFAULT_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 
 /** Overpass is a shared volunteer service; keep the query bounded. */
 const MAX_OVERPASS_RADIUS_METRES = 20_000;
-const MAX_OVERPASS_RESULTS = 60;
+const MAX_OVERPASS_RESULTS = 40;
+
+/**
+ * Overpass cost scales with the area swept, and this is the single biggest
+ * lever on the 504s the public instance returns under load. The group's default
+ * five-mile radius asks it to scan roughly 200 km², when the five options we
+ * actually present are within a kilometre in any populated area. The group's
+ * radius still applies as a filter afterwards — this only bounds how far the
+ * query itself reaches. Somewhere genuinely rural can raise it.
+ */
+const DEFAULT_MAX_QUERY_RADIUS_METRES = 3_000;
+
+/** Never give an endpoint so little time that a healthy one looks broken. */
+const MIN_ATTEMPT_MS = 4_000;
+
+/** What we allow Overpass itself to spend. See the note where it is used. */
+const OVERPASS_SERVER_TIMEOUT_SECONDS = 25;
 
 interface OverpassElement {
   type?: string;
@@ -43,7 +66,15 @@ interface OverpassElement {
 }
 
 export interface OsmOptions {
-  overpassUrl?: string;
+  /** Caps how far the Overpass query reaches, independent of the group's radius. */
+  maxQueryRadiusMetres?: number;
+  /**
+   * One or more Overpass endpoints, tried in order. The public instances are
+   * shared and independently loaded, so when one is saturated another often
+   * answers immediately — the observed failures are latency under load, not a
+   * quota, which makes a second endpoint a genuine fix rather than a retry.
+   */
+  overpassUrl?: string | readonly string[];
   nominatimUrl?: string;
   /** Nominatim's usage policy requires an identifying User-Agent. */
   userAgent?: string;
@@ -80,6 +111,7 @@ export class OsmRestaurantProvider implements RestaurantProvider {
   private readonly timeoutMs: number;
   private readonly fetchImpl: typeof fetch;
   private readonly userAgent: string;
+  private readonly endpoints: readonly string[];
 
   constructor(private readonly options: OsmOptions = {}) {
     // Overpass is genuinely slow for a multi-kilometre radius over nodes and
@@ -88,6 +120,11 @@ export class OsmRestaurantProvider implements RestaurantProvider {
     this.timeoutMs = options.timeoutMs ?? 12_000;
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.userAgent = options.userAgent ?? "Viand/0.1 (restaurant decision bot)";
+
+    const configured = options.overpassUrl ?? DEFAULT_OVERPASS_URLS;
+    this.endpoints = (typeof configured === "string" ? configured.split(",") : configured)
+      .map((endpoint) => endpoint.trim())
+      .filter(Boolean);
   }
 
   async search(input: RestaurantSearchInput): Promise<RestaurantSearchResult> {
@@ -143,35 +180,87 @@ export class OsmRestaurantProvider implements RestaurantProvider {
   }
 
   private async searchOverpass(center: LatLng, radiusMiles: number): Promise<OverpassElement[]> {
-    const radius = Math.round(
-      Math.min(Math.max(radiusMiles * METRES_PER_MILE, 1), MAX_OVERPASS_RADIUS_METRES),
+    const cap = Math.min(
+      this.options.maxQueryRadiusMetres ?? DEFAULT_MAX_QUERY_RADIUS_METRES,
+      MAX_OVERPASS_RADIUS_METRES,
     );
-    const filter = `["amenity"~"^(restaurant|fast_food|cafe)$"]["name"]`;
-    // Tell Overpass the same budget we are willing to wait, so it gives up on
-    // its side instead of spending server time on a result we have abandoned.
-    const serverTimeoutSeconds = Math.max(1, Math.floor(this.timeoutMs / 1000));
+    const radius = Math.round(Math.min(Math.max(radiusMiles * METRES_PER_MILE, 1), cap));
+
+    // Deliberately generous, and deliberately NOT tied to our own budget.
+    // Overpass treats this as permission to finish, not a target: set it low
+    // and a query it could have answered instead returns HTTP 200 with a
+    // `remark` and an empty element list — indistinguishable from "there are no
+    // restaurants here" unless you check. Our client-side abort is what
+    // actually bounds the wait.
+    const serverTimeoutSeconds = OVERPASS_SERVER_TIMEOUT_SECONDS;
+
+    // Three exact tag matches rather than one regex: a regex on a tag value
+    // defeats Overpass's index and forces a scan. Nodes only — restaurants
+    // mapped as building outlines cost roughly double to fetch (every polygon
+    // needs a centroid computed) for a small minority of extra results.
+    const around = `(around:${radius},${center.latitude},${center.longitude})`;
     const query = [
       `[out:json][timeout:${serverTimeoutSeconds}];`,
       "(",
-      `  node${filter}(around:${radius},${center.latitude},${center.longitude});`,
-      `  way${filter}(around:${radius},${center.latitude},${center.longitude});`,
+      `  node["amenity"="restaurant"]["name"]${around};`,
+      `  node["amenity"="fast_food"]["name"]${around};`,
+      `  node["amenity"="cafe"]["name"]${around};`,
       ");",
       `out center tags ${MAX_OVERPASS_RESULTS};`,
     ].join("\n");
 
-    const response = await this.fetchImpl(this.options.overpassUrl ?? DEFAULT_OVERPASS_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": this.userAgent,
-      },
-      body: new URLSearchParams({ data: query }).toString(),
-      signal: AbortSignal.timeout(this.timeoutMs),
-    });
-    if (!response.ok) throw new Error(`Overpass search failed with status ${response.status}.`);
+    let lastError: unknown = new Error("No Overpass endpoint configured.");
 
-    const body = (await response.json()) as { elements?: OverpassElement[] };
-    return body.elements ?? [];
+    // `timeoutMs` is the budget for the whole failover, not for each attempt:
+    // three endpoints at the full budget each would take three times as long as
+    // one, which is the opposite of what falling over is for and would blow any
+    // serverless ceiling. A short slice each is also the right shape — if one
+    // instance has not answered in a few seconds it is saturated, and the next
+    // one usually answers immediately.
+    const deadline = Date.now() + this.timeoutMs;
+    const perAttemptMs = Math.max(
+      MIN_ATTEMPT_MS,
+      Math.floor(this.timeoutMs / Math.max(this.endpoints.length, 1)),
+    );
+
+    for (const endpoint of this.endpoints) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+
+      try {
+        const response = await this.fetchImpl(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": this.userAgent,
+          },
+          body: new URLSearchParams({ data: query }).toString(),
+          signal: AbortSignal.timeout(Math.min(remaining, perAttemptMs)),
+        });
+        if (!response.ok) {
+          throw new Error(`Overpass search failed with status ${response.status}.`);
+        }
+
+        const body = (await response.json()) as {
+          elements?: OverpassElement[];
+          remark?: string;
+        };
+
+        // Overpass reports its own timeouts and memory limits as a `remark` on
+        // an otherwise successful response with no elements. Treating that as
+        // an empty neighbourhood would tell the group there is nowhere to eat
+        // in central Berkeley, so it is an error and worth failing over for.
+        if (body.remark) {
+          throw new Error(`Overpass returned a remark: ${body.remark}`);
+        }
+
+        return body.elements ?? [];
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError;
   }
 
   private normalise(element: OverpassElement, center: LatLng): Restaurant | null {

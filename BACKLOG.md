@@ -5,7 +5,7 @@
 - [x] Receive and verify Linq `message.received` webhooks.
 - [x] Process location, preferences, recommendations, voting, and opt-out commands.
 - [x] Provide a bare dashboard with an end-to-end message simulator.
-- [ ] Replace the local restaurant catalogue with an approved nearby-places source.
+- [x] Replace the local restaurant catalogue with an approved nearby-places source.
 - [ ] Replace process memory with durable storage after the MVP is validated.
 
 ## Guardrails
