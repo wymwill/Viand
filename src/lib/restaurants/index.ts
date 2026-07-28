@@ -30,6 +30,7 @@ export function getRestaurantProvider(): RestaurantProvider {
       overpassUrl: env.OVERPASS_URL,
       nominatimUrl: env.NOMINATIM_URL,
       userAgent: env.OSM_USER_AGENT,
+      geocodingTimeoutMs: env.NOMINATIM_TIMEOUT_MS,
       timeoutMs: env.OSM_TIMEOUT_MS,
       maxQueryRadiusMetres: env.OSM_MAX_QUERY_RADIUS_METRES,
     }),

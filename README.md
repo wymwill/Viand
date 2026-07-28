@@ -54,7 +54,9 @@ must not be satisfied by “a couple of things on the menu”. OSM does not prov
 dependable ratings or prices, and its `opening_hours` grammar is not currently
 parsed.
 
-Overpass endpoints are tried in order when one is overloaded. Successful
+The configured Overpass endpoints share one deadline and the first valid
+response wins, so a hanging instance cannot block failover. Public queries are
+capped at 1.5 kilometres and have a 30-second client budget. Successful
 searches are cached in the current server process and can be served stale if
 the upstream source later fails. This protects a warm process from short
 outages, but it is not a durable cross-instance cache.

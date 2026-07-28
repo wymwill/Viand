@@ -57,7 +57,7 @@ const schema = z
 
     // Live restaurant data from keyless, volunteer-run OpenStreetMap services.
     USE_MOCK_RESTAURANTS: booleanish.default(true),
-    /** Comma-separated. Endpoints are tried in order when one is overloaded. */
+    /** Comma-separated. The first valid response wins within one deadline. */
     OVERPASS_URL: z
       .string()
       .default(
@@ -70,10 +70,12 @@ const schema = z
     NOMINATIM_URL: z.string().url().default("https://nominatim.openstreetmap.org/search"),
     /** Nominatim's usage policy requires an identifying User-Agent. */
     OSM_USER_AGENT: z.string().default("Viand/0.1 (restaurant decision bot)"),
-    /** Total budget for one upstream step, shared across failover endpoints. */
-    OSM_TIMEOUT_MS: z.coerce.number().int().positive().default(12_000),
-    /** Raise for rural areas where the nearest options are further out. */
-    OSM_MAX_QUERY_RADIUS_METRES: z.coerce.number().int().positive().default(3_000),
+    /** Nominatim stays short so a slow geocode cannot consume the search budget. */
+    NOMINATIM_TIMEOUT_MS: z.coerce.number().int().positive().default(8_000),
+    /** Total Overpass budget shared across the configured endpoints. */
+    OSM_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+    /** Public Overpass queries are capped at 1.5km even if configured higher. */
+    OSM_MAX_QUERY_RADIUS_METRES: z.coerce.number().int().positive().default(1_500),
   })
   .superRefine((env, ctx) => {
     // Credentials are required by the transport that is actually selected, so a

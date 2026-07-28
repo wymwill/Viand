@@ -5,7 +5,7 @@ import { inboundFromLinq } from "@/lib/messaging/linq-webhook";
 import { processMessage } from "@/lib/runtime";
 
 /** See the note in /api/simulate: a live search needs longer than the default. */
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   const env = getEnv();

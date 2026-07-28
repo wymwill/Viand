@@ -5,7 +5,7 @@ import { inboundFromTelegram, type TelegramUpdate } from "@/lib/messaging/telegr
 import { processMessage } from "@/lib/runtime";
 
 /** See the note in /api/simulate: a live search needs longer than the default. */
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 /** Constant-time compare that tolerates unequal lengths. */
 function secretMatches(received: string, expected: string): boolean {

@@ -26,10 +26,7 @@ import {
  * results from here rank on distance and cuisine fit alone.
  */
 
-/**
- * Tried in order. Independent instances serving the same data, so one being
- * saturated says nothing about the next.
- */
+/** Independent instances serving the same data. */
 const DEFAULT_OVERPASS_URLS = [
   "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
@@ -38,21 +35,23 @@ const DEFAULT_OVERPASS_URLS = [
 const DEFAULT_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 
 /** Overpass is a shared volunteer service; keep the query bounded. */
-const MAX_OVERPASS_RADIUS_METRES = 20_000;
+const MAX_OVERPASS_RADIUS_METRES = 1_500;
 const MAX_OVERPASS_RESULTS = 40;
 
 /**
  * Overpass cost scales with the area swept, and this is the single biggest
  * lever on the 504s the public instance returns under load. The group's default
- * five-mile radius asks it to scan roughly 200 km², when the five options we
- * actually present are within a kilometre in any populated area. The group's
- * radius still applies as a filter afterwards — this only bounds how far the
- * query itself reaches. Somewhere genuinely rural can raise it.
+ * five-mile radius asks it to scan roughly 200 km². Live checks showed the
+ * public instances answering a 1.5-kilometre query inside the longer client
+ * budget while 3-kilometre queries remained unreliable. The group's radius
+ * still applies as a filter afterwards — this only bounds how far the upstream
+ * query reaches.
  */
-const DEFAULT_MAX_QUERY_RADIUS_METRES = 3_000;
+const DEFAULT_MAX_QUERY_RADIUS_METRES = MAX_OVERPASS_RADIUS_METRES;
 
 /** What we allow Overpass itself to spend. See the note where it is used. */
-const OVERPASS_SERVER_TIMEOUT_SECONDS = 25;
+const OVERPASS_SERVER_TIMEOUT_SECONDS = 40;
+const DEFAULT_NOMINATIM_TIMEOUT_MS = 8_000;
 
 interface OverpassElement {
   type?: string;
@@ -67,15 +66,15 @@ export interface OsmOptions {
   /** Caps how far the Overpass query reaches, independent of the group's radius. */
   maxQueryRadiusMetres?: number;
   /**
-   * One or more Overpass endpoints, tried in order. The public instances are
-   * shared and independently loaded, so when one is saturated another often
-   * answers immediately — the observed failures are latency under load, not a
-   * quota, which makes a second endpoint a genuine fix rather than a retry.
+   * One or more Overpass endpoints. Public instances are independently loaded,
+   * so they are queried within one shared deadline and the first valid response
+   * wins. The outer cache prevents this from happening on every message.
    */
   overpassUrl?: string | readonly string[];
   nominatimUrl?: string;
   /** Nominatim's usage policy requires an identifying User-Agent. */
   userAgent?: string;
+  geocodingTimeoutMs?: number;
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
 }
@@ -123,6 +122,7 @@ function endpointHost(endpoint: string): string {
 
 export class OsmRestaurantProvider implements RestaurantProvider {
   private readonly timeoutMs: number;
+  private readonly geocodingTimeoutMs: number;
   private readonly fetchImpl: typeof fetch;
   private readonly userAgent: string;
   private readonly endpoints: readonly string[];
@@ -131,7 +131,8 @@ export class OsmRestaurantProvider implements RestaurantProvider {
     // Overpass is genuinely slow for a multi-kilometre radius over nodes and
     // ways, and it is the fallback rather than the hot path, so the budget is
     // wider than a fast commercial API would need.
-    this.timeoutMs = options.timeoutMs ?? 12_000;
+    this.timeoutMs = options.timeoutMs ?? 30_000;
+    this.geocodingTimeoutMs = options.geocodingTimeoutMs ?? DEFAULT_NOMINATIM_TIMEOUT_MS;
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.userAgent = options.userAgent ?? "Viand/0.1 (restaurant decision bot)";
 
@@ -181,11 +182,11 @@ export class OsmRestaurantProvider implements RestaurantProvider {
     try {
       response = await this.fetchImpl(url, {
         headers: { "User-Agent": this.userAgent, Accept: "application/json" },
-        signal: AbortSignal.timeout(this.timeoutMs),
+        signal: AbortSignal.timeout(this.geocodingTimeoutMs),
       });
     } catch (error) {
       const detail = isTimeoutError(error)
-        ? `timed out after ${this.timeoutMs}ms`
+        ? `timed out after ${this.geocodingTimeoutMs}ms`
         : `request failed: ${errorMessage(error)}`;
       throw new Error(`Nominatim geocoding ${detail}.`, { cause: error });
     }
@@ -231,20 +232,21 @@ export class OsmRestaurantProvider implements RestaurantProvider {
       `out center tags ${MAX_OVERPASS_RESULTS};`,
     ].join("\n");
 
-    const failures: string[] = [];
+    if (this.endpoints.length === 0) {
+      throw new Error("No Overpass endpoint is configured.");
+    }
 
-    // `timeoutMs` is the budget for the whole failover, not for each attempt:
-    // three endpoints at the full budget each would take three times as long as
-    // one, which is the opposite of what falling over is for and would blow any
-    // serverless ceiling. Each attempt gets all time still available: splitting
-    // a 12-second budget evenly once aborted a healthy response at six seconds.
-    // A fast 5xx still leaves nearly the full budget for the next instance.
-    const deadline = Date.now() + this.timeoutMs;
-
-    for (const endpoint of this.endpoints) {
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) break;
-      const attemptTimeoutMs = remaining;
+    // A sequential attempt can consume the whole serverless-safe deadline and
+    // leave no time for failover. Dividing the deadline between instances also
+    // aborted healthy public responses. Race the independently operated mirrors
+    // instead, then cancel the slower reads as soon as one valid response wins.
+    const controllers = this.endpoints.map(() => new AbortController());
+    const attempts = controllers.map(async (controller, index) => {
+      const endpoint = this.endpoints[index]!;
+      const signal = AbortSignal.any([
+        controller.signal,
+        AbortSignal.timeout(this.timeoutMs),
+      ]);
 
       try {
         const response = await this.fetchImpl(endpoint, {
@@ -255,7 +257,7 @@ export class OsmRestaurantProvider implements RestaurantProvider {
             "User-Agent": this.userAgent,
           },
           body: new URLSearchParams({ data: query }).toString(),
-          signal: AbortSignal.timeout(attemptTimeoutMs),
+          signal,
         });
         if (!response.ok) {
           throw new Error(`Overpass search failed with status ${response.status}.`);
@@ -277,16 +279,25 @@ export class OsmRestaurantProvider implements RestaurantProvider {
         return body.elements ?? [];
       } catch (error) {
         const detail = isTimeoutError(error)
-          ? `timed out after ${attemptTimeoutMs}ms`
+          ? `timed out after ${this.timeoutMs}ms`
           : errorMessage(error);
-        failures.push(`${endpointHost(endpoint)}: ${detail}`);
+        throw new Error(`${endpointHost(endpoint)}: ${detail}`, { cause: error });
       }
-    }
+    });
 
-    if (failures.length === 0) {
-      throw new Error("No Overpass endpoint is configured.");
+    try {
+      return await Promise.any(attempts);
+    } catch (error) {
+      const failures =
+        error instanceof AggregateError
+          ? error.errors.map(errorMessage)
+          : [errorMessage(error)];
+      throw new Error(`All Overpass endpoints failed (${failures.join("; ")}).`, {
+        cause: error,
+      });
+    } finally {
+      for (const controller of controllers) controller.abort();
     }
-    throw new Error(`All Overpass endpoints failed (${failures.join("; ")}).`);
   }
 
   private normalise(element: OverpassElement, center: LatLng): Restaurant | null {

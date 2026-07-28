@@ -79,6 +79,27 @@ describe("Overpass endpoint failover", () => {
     expect(result.restaurants).toHaveLength(1);
   });
 
+  it("does not let a hanging primary block a healthy fallback", async () => {
+    const fetchImpl = (async (target: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(target);
+      if (url.includes("nominatim")) return stubFetch([node()])(target as RequestInfo, init);
+      if (url.includes("a.example")) {
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        }) as Promise<Response>;
+      }
+      return new Response(JSON.stringify({ elements: [node()] }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const result = await new OsmRestaurantProvider({
+      fetchImpl,
+      timeoutMs: 5_000,
+      overpassUrl: ["https://a.example/api", "https://b.example/api"],
+    }).search(search);
+
+    expect(result.restaurants).toHaveLength(1);
+  });
+
   it("bounds total failover time rather than multiplying it", async () => {
     // Every endpoint hangs. Each attempt must get a slice of the budget, so the
     // whole thing finishes near timeoutMs rather than timeoutMs × endpoints.
@@ -142,7 +163,7 @@ describe("Overpass query cost", () => {
     // instance starts returning 504s.
     await provider([node()]).search({ locationText: "Berkeley", radiusMiles: 5 });
     const around = /around:(\d+)/.exec(lastQuery);
-    expect(Number(around?.[1])).toBe(3000);
+    expect(Number(around?.[1])).toBe(1500);
   });
 
   it("never asks for more than the group's radius", async () => {
@@ -170,7 +191,7 @@ describe("Overpass query cost", () => {
       timeoutMs: 4_000,
       overpassUrl: "https://a.example/api,https://b.example/api",
     }).search(search);
-    expect(lastQuery).toContain("[timeout:25]");
+    expect(lastQuery).toContain("[timeout:40]");
   });
 
   it("treats a remark as a failure rather than an empty neighbourhood", async () => {
@@ -196,7 +217,10 @@ describe("OsmRestaurantProvider", () => {
     }) as unknown as typeof fetch;
 
     await expect(
-      new OsmRestaurantProvider({ fetchImpl, timeoutMs: 5_000 }).search(search),
+      new OsmRestaurantProvider({
+        fetchImpl,
+        geocodingTimeoutMs: 5_000,
+      }).search(search),
     ).rejects.toThrow("Nominatim geocoding timed out after 5000ms");
   });
 
