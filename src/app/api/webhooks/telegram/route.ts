@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { getEnv } from "@/lib/env";
+import { getEnv, resolveMessagingProvider } from "@/lib/env";
 import { inboundFromTelegram, type TelegramUpdate } from "@/lib/messaging/telegram-webhook";
 import { processMessage } from "@/lib/runtime";
 
@@ -19,6 +19,11 @@ function secretMatches(received: string, expected: string): boolean {
 
 export async function POST(request: Request) {
   const env = getEnv();
+  const provider = resolveMessagingProvider(env);
+  if (provider !== "mock" && provider !== "telegram") {
+    return NextResponse.json({ accepted: true, processed: false }, { status: 202 });
+  }
+
   if (!env.TELEGRAM_WEBHOOK_SECRET) {
     return NextResponse.json(
       { error: "Telegram webhook is not configured." },

@@ -1,6 +1,6 @@
 import LinqAPIV3 from "@linqapp/sdk";
 import { NextResponse } from "next/server";
-import { getEnv } from "@/lib/env";
+import { getEnv, resolveMessagingProvider } from "@/lib/env";
 import { inboundFromLinq } from "@/lib/messaging/linq-webhook";
 import { processMessage } from "@/lib/runtime";
 
@@ -9,6 +9,11 @@ export const maxDuration = 30;
 
 export async function POST(request: Request) {
   const env = getEnv();
+  const provider = resolveMessagingProvider(env);
+  if (provider !== "mock" && provider !== "linq") {
+    return NextResponse.json({ accepted: true, processed: false }, { status: 202 });
+  }
+
   if (!env.LINQ_WEBHOOK_SECRET) {
     return NextResponse.json(
       { error: "Linq webhook is not configured." },

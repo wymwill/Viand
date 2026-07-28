@@ -92,4 +92,19 @@ describe("Linq webhook route", () => {
 
     expect(response.status).toBe(401);
   });
+
+  it("ignores Linq deliveries when Telegram is the active transport", async () => {
+    process.env.MESSAGING_PROVIDER = "telegram";
+    process.env.TELEGRAM_BOT_TOKEN = "test-token";
+    process.env.TELEGRAM_WEBHOOK_SECRET = "telegram-secret";
+    resetEnvCache();
+
+    const response = await POST(signedRequest(payload(crypto.randomUUID())));
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({
+      accepted: true,
+      processed: false,
+    });
+  });
 });

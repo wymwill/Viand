@@ -7,6 +7,9 @@ import { resetRuntime } from "@/lib/runtime";
 const originalEnv = { ...process.env };
 
 beforeEach(() => {
+  process.env.MESSAGING_PROVIDER = "telegram";
+  process.env.TELEGRAM_BOT_TOKEN = "unused-telegram-token";
+  process.env.TELEGRAM_WEBHOOK_SECRET = "unused-telegram-secret";
   process.env.USE_MOCK_LINQ = "false";
   process.env.LINQ_API_KEY = "unused-live-key";
   process.env.LINQ_PHONE_NUMBER = "+15555550123";
@@ -40,7 +43,7 @@ describe("dashboard simulator route", () => {
     return POST(request);
   }
 
-  it("stays on mock messaging when live Linq mode is enabled", async () => {
+  it("stays on mock messaging when Telegram is the active transport", async () => {
     const response = await simulate("Hey Viand");
 
     expect(response.status).toBe(200);

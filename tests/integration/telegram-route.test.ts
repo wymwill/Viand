@@ -95,4 +95,20 @@ describe("Telegram webhook route", () => {
       processed: false,
     });
   });
+
+  it("ignores Telegram deliveries when Linq is the active transport", async () => {
+    process.env.MESSAGING_PROVIDER = "linq";
+    process.env.LINQ_API_KEY = "test-api-key";
+    process.env.LINQ_PHONE_NUMBER = "+15555550123";
+    process.env.LINQ_WEBHOOK_SECRET = "linq-secret";
+    resetEnvCache();
+
+    const response = await POST(request(updateBody(8)));
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({
+      accepted: true,
+      processed: false,
+    });
+  });
 });
