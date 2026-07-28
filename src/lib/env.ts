@@ -61,8 +61,9 @@ const schema = z
     OVERPASS_URL: z
       .string()
       .default(
-        "https://overpass-api.de/api/interpreter," +
-          "https://overpass.kumi.systems/api/interpreter",
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter," +
+          "https://overpass.kumi.systems/api/interpreter," +
+          "https://overpass-api.de/api/interpreter",
       ),
     /** How long a search is reused before re-fetching. Restaurants move slowly. */
     RESTAURANT_CACHE_TTL_HOURS: z.coerce.number().int().positive().default(168),

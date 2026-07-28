@@ -94,13 +94,13 @@ describe("Overpass endpoint failover", () => {
     await expect(
       new OsmRestaurantProvider({
         fetchImpl,
-        timeoutMs: 9_000,
+        timeoutMs: 300,
         overpassUrl: ["https://a.example/api", "https://b.example/api", "https://c.example/api"],
       }).search(search),
     ).rejects.toThrow();
 
-    expect(Date.now() - started).toBeLessThan(12_000);
-  }, 20_000);
+    expect(Date.now() - started).toBeLessThan(1_500);
+  }, 3_000);
 
   it("reports the last failure when every endpoint is down", async () => {
     const fetchImpl = (async (target: RequestInfo | URL, init?: RequestInit) => {
@@ -114,7 +114,25 @@ describe("Overpass endpoint failover", () => {
         fetchImpl,
         overpassUrl: ["https://a.example/api", "https://b.example/api"],
       }).search(search),
-    ).rejects.toThrow("504");
+    ).rejects.toThrow(
+      "All Overpass endpoints failed (a.example: Overpass search failed with status 504.; b.example: Overpass search failed with status 504.)",
+    );
+  });
+
+  it("identifies Overpass timeouts by endpoint", async () => {
+    const fetchImpl = (async (target: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(target);
+      if (url.includes("nominatim")) return stubFetch([node()])(target as RequestInfo, init);
+      throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    }) as unknown as typeof fetch;
+
+    await expect(
+      new OsmRestaurantProvider({
+        fetchImpl,
+        timeoutMs: 5_000,
+        overpassUrl: "https://overpass.example/api",
+      }).search(search),
+    ).rejects.toThrow("overpass.example: timed out after");
   });
 });
 
@@ -172,6 +190,16 @@ describe("Overpass query cost", () => {
 });
 
 describe("OsmRestaurantProvider", () => {
+  it("identifies a geocoding timeout instead of blaming Overpass", async () => {
+    const fetchImpl = (async () => {
+      throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    }) as unknown as typeof fetch;
+
+    await expect(
+      new OsmRestaurantProvider({ fetchImpl, timeoutMs: 5_000 }).search(search),
+    ).rejects.toThrow("Nominatim geocoding timed out after 5000ms");
+  });
+
   it("normalises a listing and identifies the source", async () => {
     const result = await provider([node()]).search(search);
 

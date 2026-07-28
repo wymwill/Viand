@@ -31,8 +31,9 @@ import {
  * saturated says nothing about the next.
  */
 const DEFAULT_OVERPASS_URLS = [
-  "https://overpass-api.de/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
 ];
 const DEFAULT_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 
@@ -49,9 +50,6 @@ const MAX_OVERPASS_RESULTS = 40;
  * query itself reaches. Somewhere genuinely rural can raise it.
  */
 const DEFAULT_MAX_QUERY_RADIUS_METRES = 3_000;
-
-/** Never give an endpoint so little time that a healthy one looks broken. */
-const MIN_ATTEMPT_MS = 4_000;
 
 /** What we allow Overpass itself to spend. See the note where it is used. */
 const OVERPASS_SERVER_TIMEOUT_SECONDS = 25;
@@ -105,6 +103,22 @@ function coordinatesOf(element: OverpassElement): LatLng | null {
   const longitude = element.lon ?? element.center?.lon;
   if (latitude == null || longitude == null) return null;
   return { latitude, longitude };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isTimeoutError(error: unknown): boolean {
+  return error instanceof Error && error.name === "TimeoutError";
+}
+
+function endpointHost(endpoint: string): string {
+  try {
+    return new URL(endpoint).host;
+  } catch {
+    return endpoint;
+  }
 }
 
 export class OsmRestaurantProvider implements RestaurantProvider {
@@ -163,10 +177,18 @@ export class OsmRestaurantProvider implements RestaurantProvider {
     url.searchParams.set("format", "json");
     url.searchParams.set("limit", "1");
 
-    const response = await this.fetchImpl(url, {
-      headers: { "User-Agent": this.userAgent, Accept: "application/json" },
-      signal: AbortSignal.timeout(this.timeoutMs),
-    });
+    let response: Response;
+    try {
+      response = await this.fetchImpl(url, {
+        headers: { "User-Agent": this.userAgent, Accept: "application/json" },
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+    } catch (error) {
+      const detail = isTimeoutError(error)
+        ? `timed out after ${this.timeoutMs}ms`
+        : `request failed: ${errorMessage(error)}`;
+      throw new Error(`Nominatim geocoding ${detail}.`, { cause: error });
+    }
     if (!response.ok) throw new Error(`Geocoding failed with status ${response.status}.`);
 
     const body = (await response.json()) as { lat?: string; lon?: string; display_name?: string }[];
@@ -209,33 +231,31 @@ export class OsmRestaurantProvider implements RestaurantProvider {
       `out center tags ${MAX_OVERPASS_RESULTS};`,
     ].join("\n");
 
-    let lastError: unknown = new Error("No Overpass endpoint configured.");
+    const failures: string[] = [];
 
     // `timeoutMs` is the budget for the whole failover, not for each attempt:
     // three endpoints at the full budget each would take three times as long as
     // one, which is the opposite of what falling over is for and would blow any
-    // serverless ceiling. A short slice each is also the right shape — if one
-    // instance has not answered in a few seconds it is saturated, and the next
-    // one usually answers immediately.
+    // serverless ceiling. Each attempt gets all time still available: splitting
+    // a 12-second budget evenly once aborted a healthy response at six seconds.
+    // A fast 5xx still leaves nearly the full budget for the next instance.
     const deadline = Date.now() + this.timeoutMs;
-    const perAttemptMs = Math.max(
-      MIN_ATTEMPT_MS,
-      Math.floor(this.timeoutMs / Math.max(this.endpoints.length, 1)),
-    );
 
     for (const endpoint of this.endpoints) {
       const remaining = deadline - Date.now();
       if (remaining <= 0) break;
+      const attemptTimeoutMs = remaining;
 
       try {
         const response = await this.fetchImpl(endpoint, {
           method: "POST",
           headers: {
+            Accept: "application/json",
             "Content-Type": "application/x-www-form-urlencoded",
             "User-Agent": this.userAgent,
           },
           body: new URLSearchParams({ data: query }).toString(),
-          signal: AbortSignal.timeout(Math.min(remaining, perAttemptMs)),
+          signal: AbortSignal.timeout(attemptTimeoutMs),
         });
         if (!response.ok) {
           throw new Error(`Overpass search failed with status ${response.status}.`);
@@ -256,11 +276,17 @@ export class OsmRestaurantProvider implements RestaurantProvider {
 
         return body.elements ?? [];
       } catch (error) {
-        lastError = error;
+        const detail = isTimeoutError(error)
+          ? `timed out after ${attemptTimeoutMs}ms`
+          : errorMessage(error);
+        failures.push(`${endpointHost(endpoint)}: ${detail}`);
       }
     }
 
-    throw lastError;
+    if (failures.length === 0) {
+      throw new Error("No Overpass endpoint is configured.");
+    }
+    throw new Error(`All Overpass endpoints failed (${failures.join("; ")}).`);
   }
 
   private normalise(element: OverpassElement, center: LatLng): Restaurant | null {
