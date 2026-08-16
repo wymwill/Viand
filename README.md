@@ -222,7 +222,10 @@ npm run eval -- --seed=7 --groups=20 --catalogue=mock --strategies=a,c --json
 
 ## Scope
 
-- State and webhook deduplication are in memory and reset on restart.
+- State and webhook deduplication are in memory and reset on restart, unless
+  `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are set, which switches
+  both to Redis. Serverless hosts need this: their functions do not share memory,
+  so an in-memory session would evaporate mid-conversation.
 - Restaurant results come from a deterministic Berkeley demo catalogue unless
   live data is switched on.
 - The dashboard simulator always uses mock messaging, mock restaurants, and the

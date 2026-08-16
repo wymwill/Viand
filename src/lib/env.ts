@@ -46,6 +46,9 @@ const schema = z
     TELEGRAM_BOT_USERNAME: z.string().optional(),
     TELEGRAM_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
 
+    UPSTASH_REDIS_REST_URL: z.string().url().optional(),
+    UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
+
     // Structured AI interpretation of free-text messages. Off by default: the
     // deterministic parser is a complete implementation on its own.
     ANTHROPIC_API_KEY: z.string().optional(),
@@ -111,6 +114,14 @@ const schema = z
         code: z.ZodIssueCode.custom,
         path: ["ANTHROPIC_API_KEY"],
         message: "ANTHROPIC_API_KEY is required when USE_AI_INTERPRETER=true",
+      });
+    }
+
+    if (Boolean(env.UPSTASH_REDIS_REST_URL) !== Boolean(env.UPSTASH_REDIS_REST_TOKEN)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [env.UPSTASH_REDIS_REST_URL ? "UPSTASH_REDIS_REST_TOKEN" : "UPSTASH_REDIS_REST_URL"],
+        message: "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set together",
       });
     }
 

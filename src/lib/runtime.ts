@@ -8,9 +8,11 @@ import { getMessagingProvider, getMockMessagingProvider } from "@/lib/messaging"
 import type { MessagingProvider } from "@/lib/messaging/provider";
 import { getRestaurantProvider } from "@/lib/restaurants";
 import { InMemorySessionStore } from "@/lib/store/memory-store";
+import { getSessionStore } from "@/lib/store";
+import type { SessionStore } from "@/lib/store/types";
 
 type Runtime = {
-  store: InMemorySessionStore;
+  store: SessionStore;
   restaurants: RestaurantProvider;
   interpreter: MessageInterpreter;
 };
@@ -37,7 +39,7 @@ const SIMULATION_KEY = `__viandSimulationRuntimeV${RUNTIME_VERSION}` as const;
 
 function getLiveRuntime(): Runtime {
   globalRuntime[LIVE_KEY] ??= {
-    store: new InMemorySessionStore(),
+    store: getSessionStore(),
     restaurants: getRestaurantProvider(),
     interpreter: getMessageInterpreter(),
   };
@@ -46,8 +48,9 @@ function getLiveRuntime(): Runtime {
 
 /**
  * The dashboard is unauthenticated, so every integration is deterministic and
- * local: mock messaging, mock restaurants, and the rules interpreter. It must
- * never spend Linq, OSM, or model capacity regardless of production settings.
+ * local: in-memory storage, mock messaging, mock restaurants, and the rules
+ * interpreter. It must never use Redis or spend Linq, OSM, or model capacity
+ * regardless of production settings.
  */
 function getSimulationRuntime(): Runtime {
   globalRuntime[SIMULATION_KEY] ??= {
@@ -84,6 +87,10 @@ export function processSimulatedMessage(message: InboundMessage) {
 }
 
 export function resetRuntime(): void {
-  globalRuntime[LIVE_KEY]?.store.reset();
-  globalRuntime[SIMULATION_KEY]?.store.reset();
+  resetStore(globalRuntime[LIVE_KEY]?.store);
+  resetStore(globalRuntime[SIMULATION_KEY]?.store);
+}
+
+function resetStore(store: SessionStore | undefined): void {
+  if (store && "reset" in store && typeof store.reset === "function") store.reset();
 }

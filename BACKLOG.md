@@ -29,15 +29,18 @@ Where Viand is and what comes next. Ordered by impact, not by effort.
   environment variable, clock, or randomness. Ranking quality is reproducible and
   reviewable without standing up a service.
 
+- **Durable session storage.** `RedisSessionStore` persists sessions, webhook
+  dedup keys, and opt-out state over Upstash's REST API, which needs no connection
+  pooling and so works from serverless. It is selected by environment and
+  `InMemorySessionStore` remains the default, so the test suite and the simulator
+  still run with no external services. Webhook deduplication uses an atomic
+  `SET NX EX`, since that is the idempotency gate. Redis failures propagate rather
+  than degrading to a local map: on a serverless host two invocations for one chat
+  can land on different instances, and contradictory partial state is worse than a
+  reply delayed until Redis recovers.
+
 ## Next
 
-- **Durable session storage.** State and webhook deduplication live in process
-  memory and reset on restart. `SessionStore` is already fully async, so a
-  Redis/Upstash implementation drops in behind the existing seam with no call-site
-  changes. This is a hard blocker for a serverless deploy — functions do not share
-  memory between invocations, so a group's session would evaporate mid-conversation.
-  `InMemorySessionStore` stays for tests and the simulator; the suite must remain
-  runnable with no external services.
 - **Deploy a live bot.** A Telegram bot someone can add to a real group chat is
   worth more than everything else on this list combined. Free, no per-message cost.
 - **CI.** Typecheck and test on every push.
