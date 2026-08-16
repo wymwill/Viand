@@ -34,14 +34,25 @@ function modelOutput(overrides: Record<string, unknown> = {}) {
   return { intent: "CHATTER", option: 0, preference, confidence: 0.9, ...overrides };
 }
 
-/** Returns a client whose single call is driven by `handler`, plus a call count. */
-function stubClient(handler: () => unknown) {
-  const calls = { count: 0 };
+type RawResponse = { rawContent: unknown[] };
+
+function rawResponse(rawContent: unknown[]): RawResponse {
+  return { rawContent };
+}
+
+/** Returns a client whose calls are driven by `handler`, plus captured arguments. */
+function stubClient(handler: () => unknown | RawResponse) {
+  const calls = { count: 0, requests: [] as unknown[], options: [] as unknown[] };
   const client = {
     messages: {
-      create: async () => {
+      create: async (request: unknown, requestOptions: unknown) => {
         calls.count += 1;
+        calls.requests.push(request);
+        calls.options.push(requestOptions);
         const payload = handler();
+        if (typeof payload === "object" && payload != null && "rawContent" in payload) {
+          return { content: payload.rawContent };
+        }
         const text = typeof payload === "string" ? payload : JSON.stringify(payload);
         return { content: [{ type: "text", text }] };
       },
@@ -74,18 +85,44 @@ describe("ClaudeInterpreter", () => {
   it("never consults the model for a command the parser already recognised", async () => {
     const { client, calls } = stubClient(() => modelOutput());
 
-    for (const text of ["1", "veto 2", "done", "cancel", "help", "STOP"]) {
+    const recognisedCommands = [
+      ["eat", "EAT"],
+      ["help", "HELP"],
+      ["pick a place", "PICK_A_PLACE"],
+      ["done", "DONE"],
+      ["status", "STATUS"],
+      ["change my answer", "CHANGE"],
+      ["cancel", "CANCEL"],
+      ["1", "VOTE"],
+      ["veto 2", "VETO"],
+      ["tell me more about option 3", "DETAILS"],
+      ["STOP", "STOP"],
+      ["START", "START"],
+    ] as const;
+
+    for (const [text, expectedKind] of recognisedCommands) {
+      expect(parseCommand(text).kind).toBe(expectedKind);
       const result = await interpreter(client).interpret(input(text, "VOTING"));
       expect(result.source).toBe("rules");
     }
     expect(calls.count).toBe(0);
   });
 
-  it("skips the model for a message longer than the input cap", async () => {
+  it("consults at the input cap and skips one character over it", async () => {
     const { client, calls } = stubClient(() => modelOutput());
-    const result = await interpreter(client, { maxInputChars: 20 }).interpret(
-      input("a".repeat(400)),
-    );
+    const subject = interpreter(client, { maxInputChars: 20 });
+
+    const atCap = await subject.interpret(input("a".repeat(20)));
+    const overCap = await subject.interpret(input("a".repeat(21)));
+
+    expect(atCap.source).toBe("ai");
+    expect(overCap.source).toBe("rules");
+    expect(calls.count).toBe(1);
+  });
+
+  it("skips the model for whitespace-only input", async () => {
+    const { client, calls } = stubClient(() => modelOutput());
+    const result = await interpreter(client).interpret(input("   "));
 
     expect(result.source).toBe("rules");
     expect(calls.count).toBe(0);
@@ -105,6 +142,19 @@ describe("ClaudeInterpreter", () => {
     // The rules parser still did its job, so the turn is not degraded.
     expect(result.preference?.preferredCuisines).toContain("mexican");
     expect(errors).toHaveLength(1);
+    expect(errors[0]).toEqual(new Error("timed out"));
+  });
+
+  it("falls back cleanly when the response contains no text block", async () => {
+    const errors: unknown[] = [];
+    const { client } = stubClient(() => rawResponse([]));
+    const result = await interpreter(client, {
+      onError: (error: unknown) => errors.push(error),
+    }).interpret(input("pizza please"));
+
+    expect(result.source).toBe("rules");
+    expect(result.preference?.preferredCuisines).toContain("pizza");
+    expect(errors).toHaveLength(1);
   });
 
   it("falls back when the response is not valid JSON", async () => {
@@ -122,6 +172,14 @@ describe("ClaudeInterpreter", () => {
     expect(result.source).toBe("rules");
   });
 
+  it.each(["42", "[]"])("falls back when valid JSON is not an object: %s", async (json) => {
+    const { client } = stubClient(() => json);
+    const result = await interpreter(client).interpret(input("pizza please"));
+
+    expect(result.source).toBe("rules");
+    expect(result.preference?.preferredCuisines).toContain("pizza");
+  });
+
   it("falls back when the model is not confident enough", async () => {
     const { client } = stubClient(() =>
       modelOutput({ intent: "CANCEL", confidence: 0.2 }),
@@ -132,14 +190,29 @@ describe("ClaudeInterpreter", () => {
     expect(result.command.kind).toBe("FREEFORM");
   });
 
+  it("accepts confidence exactly at the configured threshold", async () => {
+    const { client } = stubClient(() =>
+      modelOutput({ intent: "CANCEL", confidence: 0.6 }),
+    );
+    const result = await interpreter(client).interpret(input("call the whole thing off"));
+
+    expect(result.source).toBe("ai");
+    expect(result.command.kind).toBe("CANCEL");
+  });
+
   it("resolves a natural-language vote while voting", async () => {
-    const { client } = stubClient(() => modelOutput({ intent: "VOTE", option: 2 }));
+    const { client, calls } = stubClient(() => modelOutput({ intent: "VOTE", option: 2 }));
     const result = await interpreter(client).interpret(
       input("the taco place works for me", "VOTING", ["Sushi Ya", "Taqueria Uno", "Pizza Pi"]),
     );
 
     expect(result.source).toBe("ai");
     expect(result.command).toEqual({ kind: "VOTE", option: 2 });
+    expect(calls.options[0]).toEqual({ timeout: 1_000, maxRetries: 0 });
+    const request = calls.requests[0] as { messages: Array<{ content: string }> };
+    expect(request.messages[0]?.content).toContain("Sushi Ya");
+    expect(request.messages[0]?.content).toContain("Taqueria Uno");
+    expect(request.messages[0]?.content).toContain("Pizza Pi");
   });
 
   it("refuses a vote when no options are on the table", async () => {

@@ -53,11 +53,13 @@ const SYSTEM_PROMPT = [
   "  address, or shared coordinates.",
   "- Use PREFERENCE when someone states what they want to eat, what they cannot",
   "  eat, a budget, or a distance limit, and fill in the preference fields.",
-  "- Use VOTE or VETO only when options are on the table and the message picks or",
-  "  rules out one of them, including by name (\"the taco place works for me\").",
+  "- Use VOTE only to support an option and VETO only to explicitly reject one.",
+  "  Use either only when options are on the table, including when named instead",
+  "  of numbered (\"the taco place works for me\" or \"not the taco place\").",
   "- Leave option 0, maxPriceLevel 0, and maxDistanceMiles 0 when not stated.",
-  "- confidence is your own 0-1 estimate. Be honest: a low score falls back to a",
-  "  deterministic parser, which is the safe outcome when you are unsure.",
+  "- confidence is your own 0-1 estimate: use a high score only for an explicit,",
+  "  unambiguous intent; use a low score for indirect or uncertain language. A",
+  "  low score safely falls back to a deterministic parser.",
 ].join("\n");
 
 const STAGE_HINTS: Record<DecisionState, string> = {

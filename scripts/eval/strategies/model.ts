@@ -36,11 +36,20 @@ export function modelStrategyAvailable(): boolean {
 }
 
 const SYSTEM_PROMPT = [
-  "You are helping a group of friends choose one restaurant.",
+  "You are helping a group of friends choose one restaurant where everyone will eat together.",
   "You will be given what each person said, and a numbered list of restaurants.",
-  "Reply with the number of the single best restaurant for the group.",
-  "Reply with that number and nothing else.",
+  "Choose the single best restaurant for the group based on what they said.",
+  "Return its number in the required structured response.",
 ].join("\n");
+
+const CHOICE_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    restaurantIndex: { type: "integer" },
+  },
+  required: ["restaurantIndex"],
+  additionalProperties: false,
+} as const;
 
 function buildPrompt(group: EvalGroup, catalogue: readonly Restaurant[]): string {
   const lines: string[] = ["What each person said:", ""];
@@ -62,15 +71,22 @@ function buildPrompt(group: EvalGroup, catalogue: readonly Restaurant[]): string
     );
   });
 
-  lines.push("", `Reply with a single number from 1 to ${catalogue.length}.`);
+  lines.push("", `Choose one restaurant numbered from 1 to ${catalogue.length}.`);
   return lines.join("\n");
 }
 
 function parseChoice(text: string, max: number): number | null {
-  const match = text.match(/\d+/);
-  if (!match) return null;
-  const index = Number(match[0]);
-  if (!Number.isInteger(index) || index < 1 || index > max) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed == null || Array.isArray(parsed)) return null;
+  const keys = Object.keys(parsed);
+  if (keys.length !== 1 || keys[0] !== "restaurantIndex") return null;
+  const index = (parsed as { restaurantIndex?: unknown }).restaurantIndex;
+  if (typeof index !== "number" || !Number.isInteger(index) || index < 1 || index > max) return null;
   return index - 1;
 }
 
@@ -83,16 +99,23 @@ async function chooseOne(
   const response = await client.messages.create(
     {
       model: options.model,
-      max_tokens: 16,
+      max_tokens: 64,
       temperature: 0,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: buildPrompt(group, catalogue) }],
+      output_config: {
+        format: {
+          type: "json_schema",
+          schema: CHOICE_JSON_SCHEMA,
+        },
+      },
     },
     { timeout: options.timeoutMs, maxRetries: 0 },
   );
 
-  const [block] = response.content;
-  if (!block || block.type !== "text") return null;
+  if (response.stop_reason === "max_tokens") return null;
+  const block = response.content.find((entry) => entry.type === "text");
+  if (!block) return null;
 
   const index = parseChoice(block.text, catalogue.length);
   return index == null ? null : (catalogue[index] ?? null);
@@ -113,8 +136,8 @@ export async function runModelStrategy(
   groups: readonly EvalGroup[],
   catalogue: readonly Restaurant[],
   options: ModelStrategyOptions = DEFAULT_MODEL_OPTIONS,
+  client: Anthropic = new Anthropic({ apiKey: process.env[MODEL_STRATEGY_ENV_KEY] as string }),
 ): Promise<ModelRunResult> {
-  const client = new Anthropic({ apiKey: process.env[MODEL_STRATEGY_ENV_KEY] as string });
   const choices: Array<Restaurant | null> = new Array(groups.length).fill(null);
   let errors = 0;
   let cursor = 0;
@@ -138,7 +161,8 @@ export async function runModelStrategy(
     }
   }
 
-  const workers = Array.from({ length: Math.min(options.concurrency, groups.length) }, worker);
+  const workerCount = Math.min(Math.max(1, options.concurrency), groups.length);
+  const workers = Array.from({ length: workerCount }, worker);
   await Promise.all(workers);
 
   return { choices, errors };
