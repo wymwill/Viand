@@ -1,0 +1,9 @@
+# One sentence, present tense, describing what the change does.
+# Ends with a full stop. No body unless a reader genuinely needs one.
+#
+# Good:
+#   Cache restaurant searches so a warm process survives a short Overpass outage.
+#   Split hard constraints from soft preferences so the two cannot be conflated.
+#
+# Avoid:
+#   Bullet lists, emoji, generated trailers, and messages that only restate the diff.
