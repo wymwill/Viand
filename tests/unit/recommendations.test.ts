@@ -8,13 +8,13 @@ import {
   NO_PREFERENCE_COMPATIBILITY,
   scoreRestaurant,
 } from "@/domain/recommendations/scoring";
-import { preference, restaurant } from "../helpers/factories";
+import { hard, preference, restaurant, soft } from "../helpers/factories";
 
 describe("hard restrictions", () => {
   it("rejects an explicitly excluded cuisine", () => {
     const violations = hardRestrictions(
       restaurant({ cuisine: "seafood" }),
-      preference({ excludedCuisines: ["seafood"] }),
+      hard({ excludedCuisines: ["seafood"] }),
     );
     expect(violations).toContainEqual({ kind: "excluded_cuisine", cuisine: "seafood" });
   });
@@ -22,7 +22,7 @@ describe("hard restrictions", () => {
   it("rejects a restaurant that cannot accommodate a dietary requirement", () => {
     const violations = hardRestrictions(
       restaurant({ accommodates: ["vegetarian"] }),
-      preference({ dietary: ["vegan"] }),
+      hard({ dietary: ["vegan"] }),
     );
     expect(violations).toContainEqual({ kind: "dietary", requirement: "vegan" });
   });
@@ -30,7 +30,7 @@ describe("hard restrictions", () => {
   it("rejects a restaurant above a stated price ceiling", () => {
     const violations = hardRestrictions(
       restaurant({ priceLevel: 4 }),
-      preference({ maxPriceLevel: 2 }),
+      hard({ maxPriceLevel: 2 }),
     );
     expect(violations).toContainEqual({ kind: "price", maxPriceLevel: 2 });
   });
@@ -38,7 +38,7 @@ describe("hard restrictions", () => {
   it("rejects a restaurant beyond a stated distance limit", () => {
     const violations = hardRestrictions(
       restaurant({ distanceMiles: 6 }),
-      preference({ maxDistanceMiles: 2 }),
+      hard({ maxDistanceMiles: 2 }),
     );
     expect(violations).toContainEqual({ kind: "distance", maxDistanceMiles: 2 });
   });
@@ -47,9 +47,9 @@ describe("hard restrictions", () => {
     const target = restaurant({ accommodates: ["vegetarian"], priceLevel: 1, distanceMiles: 0.5 });
     expect(
       isEligibleForAll(target, [
-        preference({ dietary: ["vegetarian"] }),
-        preference({ maxPriceLevel: 2 }),
-        preference({ maxDistanceMiles: 1 }),
+        hard({ dietary: ["vegetarian"] }),
+        hard({ maxPriceLevel: 2 }),
+        hard({ maxDistanceMiles: 1 }),
       ]),
     ).toBe(true);
   });
@@ -71,12 +71,12 @@ describe("weakest-member fairness", () => {
     const target = restaurant({ distanceMiles: 2.0 });
 
     const evenGroup = scoreRestaurant(target, [
-      preference({ maxDistanceMiles: 4 }),
-      preference({ maxDistanceMiles: 4 }),
+      soft({ maxDistanceMiles: 4 }),
+      soft({ maxDistanceMiles: 4 }),
     ]);
     const lopsidedGroup = scoreRestaurant(target, [
-      preference({ maxDistanceMiles: 10 }),
-      preference({ maxDistanceMiles: 2.5 }),
+      soft({ maxDistanceMiles: 10 }),
+      soft({ maxDistanceMiles: 2.5 }),
     ]);
 
     expect(lopsidedGroup.averageMember).toBeCloseTo(evenGroup.averageMember, 6);
@@ -88,8 +88,8 @@ describe("weakest-member fairness", () => {
     // A member who said "anything" scores a flat high value regardless of the
     // restaurant, so they can never be the weakest link.
     const remote = restaurant({ cuisine: "seafood", distanceMiles: 4.5, priceLevel: 4 });
-    const easygoing = preference({ noPreference: true });
-    const picky = preference({ preferredCuisines: ["mexican"] });
+    const easygoing = soft({ noPreference: true });
+    const picky = soft({ preferredCuisines: ["mexican"] });
 
     expect(memberCompatibility(remote, easygoing)).toBeCloseTo(NO_PREFERENCE_COMPATIBILITY, 6);
     expect(memberCompatibility(remote, picky)).toBeLessThan(
@@ -103,21 +103,21 @@ describe("weakest-member fairness", () => {
 
 describe("compatibility scoring", () => {
   it("rewards an exact cuisine match over an unrelated cuisine", () => {
-    const wanted = preference({ preferredCuisines: ["mexican"] });
+    const wanted = soft({ preferredCuisines: ["mexican"] });
     const match = scoreRestaurant(restaurant({ cuisine: "mexican" }), [wanted]);
     const miss = scoreRestaurant(restaurant({ cuisine: "seafood" }), [wanted]);
     expect(match.total).toBeGreaterThan(miss.total);
   });
 
   it("gives partial credit within a cuisine family", () => {
-    const wanted = preference({ preferredCuisines: ["japanese"] });
+    const wanted = soft({ preferredCuisines: ["japanese"] });
     const related = scoreRestaurant(restaurant({ cuisine: "ramen" }), [wanted]);
     const unrelated = scoreRestaurant(restaurant({ cuisine: "bbq" }), [wanted]);
     expect(related.total).toBeGreaterThan(unrelated.total);
   });
 
   it("weights are the documented distribution and sum to one", () => {
-    const score = scoreRestaurant(restaurant(), [preference()]);
+    const score = scoreRestaurant(restaurant(), [soft()]);
     expect(score.total).toBeGreaterThan(0);
     expect(score.total).toBeLessThanOrEqual(1);
   });

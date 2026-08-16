@@ -2,6 +2,12 @@
   "name": "viand",
   "version": "0.1.0",
   "private": true,
+  "description": "A group chat bot that drives a group to one restaurant everyone can live with, optimising for the least satisfied member rather than the average.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wymwill/Viand.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "next dev",
@@ -9,6 +15,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "eval": "tsx scripts/eval/index.ts",
     "test:watch": "vitest",
     "linq:register-webhook": "node --env-file-if-exists=.env.local scripts/register-linq-webhook.mjs",
     "telegram:register-webhook": "node --env-file-if-exists=.env.local scripts/register-telegram-webhook.mjs"
@@ -26,6 +33,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "standardwebhooks": "1.0.0",
+    "tsx": "^4.23.12",
     "typescript": "^5.7.0",
     "vitest": "^4.1.0"
   },

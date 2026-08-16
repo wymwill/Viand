@@ -1,5 +1,10 @@
 import type { Restaurant } from "../restaurants/provider";
 import { MAX_OPTIONS, type DietaryRequirement, type MemberPreference } from "../types";
+import {
+  hardConstraintsOf,
+  splitPreferences,
+  type HardConstraints,
+} from "./constraints";
 import { hardRestrictions, isEligibleForAll, scoreRestaurant, type GroupScore } from "./scoring";
 
 export interface Candidate {
@@ -57,13 +62,17 @@ export function recommend(
   const limit = options.limit ?? MAX_OPTIONS;
   const vetoed = new Set(options.vetoedRestaurantIds ?? []);
 
+  // The one place the two halves are separated. Everything downstream sees only
+  // the half it is entitled to: `hard` eliminates, `soft` ranks what survives.
+  const { hard, soft } = splitPreferences(preferences);
+
   const eligible = restaurants.filter(
-    (restaurant) => !vetoed.has(restaurant.id) && isEligibleForAll(restaurant, preferences),
+    (restaurant) => !vetoed.has(restaurant.id) && isEligibleForAll(restaurant, hard),
   );
   const eliminatedCount = restaurants.length - eligible.length;
 
   const scored = eligible
-    .map((restaurant) => ({ restaurant, score: scoreRestaurant(restaurant, preferences) }))
+    .map((restaurant) => ({ restaurant, score: scoreRestaurant(restaurant, soft) }))
     .sort((a, b) => {
       if (b.score.total !== a.score.total) return b.score.total - a.score.total;
       if (b.restaurant.rating !== a.restaurant.rating) return b.restaurant.rating - a.restaurant.rating;
@@ -106,11 +115,11 @@ export function recommend(
     if (picked.length >= limit) break;
   }
 
-  const groupDietary = collectGroupDietary(preferences);
+  const groupDietary = collectGroupDietary(hard);
   const candidates: Candidate[] = picked.map((entry, index) => ({
     restaurant: entry.restaurant,
     score: entry.score,
-    explanation: explain(entry, index, picked, preferences, groupDietary),
+    explanation: explain(entry, index, picked, hard, groupDietary),
   }));
 
   return {
@@ -120,29 +129,32 @@ export function recommend(
   };
 }
 
-function collectGroupDietary(preferences: readonly MemberPreference[]): DietaryRequirement[] {
+function collectGroupDietary(constraints: readonly HardConstraints[]): DietaryRequirement[] {
   const all = new Set<DietaryRequirement>();
-  for (const preference of preferences) {
-    for (const requirement of preference.dietary) all.add(requirement);
+  for (const entry of constraints) {
+    for (const requirement of entry.requiredDiets) all.add(requirement);
   }
   return [...all];
 }
 
+/**
+ * Explanations describe why an option survived, so they read the hard side.
+ * They are presentation, not ranking — nothing here feeds back into a score.
+ */
 function explain(
   entry: { restaurant: Restaurant; score: GroupScore },
   index: number,
   all: ReadonlyArray<{ restaurant: Restaurant; score: GroupScore }>,
-  preferences: readonly MemberPreference[],
+  constraints: readonly HardConstraints[],
   groupDietary: readonly DietaryRequirement[],
 ): string {
   const clauses: string[] = [];
 
   if (index === 0) clauses.push("Best overall match");
 
-  const anyBudgetStated = preferences.some((preference) => preference.maxPriceLevel != null);
-  const budgetOkForAll = preferences.every(
-    (preference) =>
-      preference.maxPriceLevel == null || entry.restaurant.priceLevel <= preference.maxPriceLevel,
+  const anyBudgetStated = constraints.some((c) => c.priceCeiling != null);
+  const budgetOkForAll = constraints.every(
+    (c) => c.priceCeiling == null || entry.restaurant.priceLevel <= c.priceCeiling,
   );
   if (anyBudgetStated && budgetOkForAll) clauses.push("works for everyone's budget");
 
@@ -181,18 +193,17 @@ export function winnerReasons(
 ): string[] {
   const reasons: string[] = [];
   const { restaurant, score } = candidate;
+  const constraints = preferences.map(hardConstraintsOf);
 
-  const anyBudgetStated = preferences.some((preference) => preference.maxPriceLevel != null);
+  const anyBudgetStated = constraints.some((c) => c.priceCeiling != null);
   if (
     anyBudgetStated &&
-    preferences.every(
-      (preference) => preference.maxPriceLevel == null || restaurant.priceLevel <= preference.maxPriceLevel,
-    )
+    constraints.every((c) => c.priceCeiling == null || restaurant.priceLevel <= c.priceCeiling)
   ) {
     reasons.push("Works for everyone's budget");
   }
 
-  for (const requirement of collectGroupDietary(preferences)) {
+  for (const requirement of collectGroupDietary(constraints)) {
     if (restaurant.accommodates.includes(requirement)) {
       reasons.push(`Has ${DIETARY_LABELS[requirement]} choices`);
     }
@@ -211,6 +222,7 @@ export function eliminationReasons(
   preferences: readonly MemberPreference[],
 ): string[] {
   return preferences
-    .flatMap((preference) => hardRestrictions(restaurant, preference))
+    .map(hardConstraintsOf)
+    .flatMap((constraints) => hardRestrictions(restaurant, constraints))
     .map((violation) => violation.kind);
 }

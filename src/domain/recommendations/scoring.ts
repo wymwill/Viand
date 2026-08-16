@@ -1,5 +1,6 @@
-import { CUISINE_FAMILIES, type Cuisine, type MemberPreference } from "../types";
+import { CUISINE_FAMILIES, type Cuisine } from "../types";
 import type { Restaurant } from "../restaurants/provider";
+import type { HardConstraints, SoftPreferences } from "./constraints";
 
 /** Weights from the product spec. Must sum to 1. */
 export const SCORE_WEIGHTS = {
@@ -53,29 +54,32 @@ export type HardRestriction =
  * before scoring rather than penalised. Dietary needs are all treated as hard,
  * not only vegetarian and vegan — a halal or gluten-free requirement is no less
  * binding, and over-filtering is the safe direction.
+ *
+ * Takes `HardConstraints`, so a soft preference cannot be smuggled in and
+ * silently used to eliminate a restaurant.
  */
 export function hardRestrictions(
   restaurant: Restaurant,
-  preference: MemberPreference,
+  constraints: HardConstraints,
 ): HardRestriction[] {
   const violations: HardRestriction[] = [];
 
-  if (preference.excludedCuisines.includes(restaurant.cuisine)) {
+  if (constraints.forbiddenCuisines.includes(restaurant.cuisine)) {
     violations.push({ kind: "excluded_cuisine", cuisine: restaurant.cuisine });
   }
 
-  for (const requirement of preference.dietary) {
+  for (const requirement of constraints.requiredDiets) {
     if (!restaurant.accommodates.includes(requirement)) {
       violations.push({ kind: "dietary", requirement });
     }
   }
 
-  if (preference.maxPriceLevel != null && restaurant.priceLevel > preference.maxPriceLevel) {
-    violations.push({ kind: "price", maxPriceLevel: preference.maxPriceLevel });
+  if (constraints.priceCeiling != null && restaurant.priceLevel > constraints.priceCeiling) {
+    violations.push({ kind: "price", maxPriceLevel: constraints.priceCeiling });
   }
 
-  if (preference.maxDistanceMiles != null && restaurant.distanceMiles > preference.maxDistanceMiles) {
-    violations.push({ kind: "distance", maxDistanceMiles: preference.maxDistanceMiles });
+  if (constraints.distanceLimit != null && restaurant.distanceMiles > constraints.distanceLimit) {
+    violations.push({ kind: "distance", maxDistanceMiles: constraints.distanceLimit });
   }
 
   return violations;
@@ -83,42 +87,46 @@ export function hardRestrictions(
 
 export function isEligibleForAll(
   restaurant: Restaurant,
-  preferences: readonly MemberPreference[],
+  constraints: readonly HardConstraints[],
 ): boolean {
-  return preferences.every((preference) => hardRestrictions(restaurant, preference).length === 0);
+  return constraints.every((entry) => hardRestrictions(restaurant, entry).length === 0);
 }
 
-function cuisineScore(restaurant: Restaurant, preference: MemberPreference): number {
-  if (preference.preferredCuisines.length === 0) return 0.7;
-  if (preference.preferredCuisines.includes(restaurant.cuisine)) return 1;
-  if (preference.preferredCuisines.some((cuisine) => sharesFamily(cuisine, restaurant.cuisine))) {
+function cuisineScore(restaurant: Restaurant, soft: SoftPreferences): number {
+  if (soft.preferredCuisines.length === 0) return 0.7;
+  if (soft.preferredCuisines.includes(restaurant.cuisine)) return 1;
+  if (soft.preferredCuisines.some((cuisine) => sharesFamily(cuisine, restaurant.cuisine))) {
     return 0.85;
   }
   return 0.35;
 }
 
-function priceComfort(restaurant: Restaurant, preference: MemberPreference): number {
-  if (preference.maxPriceLevel == null) return 0.75;
-  if (restaurant.priceLevel > preference.maxPriceLevel) return 0;
+/**
+ * The zero branch is not dead code. In the `recommend` path a restaurant over
+ * someone's ceiling was already eliminated, but `scoreRestaurant` is also
+ * called directly — by tests and by the eval harness — on unfiltered input,
+ * where an over-budget option must still score zero comfort rather than a
+ * negative number.
+ */
+function priceComfort(restaurant: Restaurant, soft: SoftPreferences): number {
+  if (soft.priceComfortCeiling == null) return 0.75;
+  if (restaurant.priceLevel > soft.priceComfortCeiling) return 0;
   // Comfortably under their ceiling scores higher than sitting exactly on it.
-  return 0.6 + 0.4 * ((preference.maxPriceLevel - restaurant.priceLevel) / 3);
+  return 0.6 + 0.4 * ((soft.priceComfortCeiling - restaurant.priceLevel) / 3);
 }
 
-function distanceComfort(restaurant: Restaurant, preference: MemberPreference): number {
-  const horizon = preference.maxDistanceMiles ?? DISTANCE_HORIZON_MILES;
+function distanceComfort(restaurant: Restaurant, soft: SoftPreferences): number {
+  const horizon = soft.distanceHorizon ?? DISTANCE_HORIZON_MILES;
   return clamp01(1 - restaurant.distanceMiles / horizon);
 }
 
 /** How well one restaurant serves one member, 0–1. */
-export function memberCompatibility(
-  restaurant: Restaurant,
-  preference: MemberPreference,
-): number {
-  if (preference.noPreference) return NO_PREFERENCE_COMPATIBILITY;
+export function memberCompatibility(restaurant: Restaurant, soft: SoftPreferences): number {
+  if (soft.easygoing) return NO_PREFERENCE_COMPATIBILITY;
   return clamp01(
-    0.6 * cuisineScore(restaurant, preference) +
-      0.2 * priceComfort(restaurant, preference) +
-      0.2 * distanceComfort(restaurant, preference),
+    0.6 * cuisineScore(restaurant, soft) +
+      0.2 * priceComfort(restaurant, soft) +
+      0.2 * distanceComfort(restaurant, soft),
   );
 }
 
@@ -136,12 +144,17 @@ export interface GroupScore {
  * Weighted group fit. The weakest-member term carries the most weight, so an
  * option that delights three people and fails a fourth loses to one everybody
  * can live with — that fairness property is what the product is selling.
+ *
+ * Takes `SoftPreferences` only. Hard constraints are structurally unable to
+ * reach this function, which is the point: they are applied by
+ * `isEligibleForAll` before anything is ranked, and a constraint that has been
+ * weighed against a rating has stopped being a constraint.
  */
 export function scoreRestaurant(
   restaurant: Restaurant,
-  preferences: readonly MemberPreference[],
+  soft: readonly SoftPreferences[],
 ): GroupScore {
-  if (preferences.length === 0) {
+  if (soft.length === 0) {
     // No stated preferences: fall back to intrinsic quality only.
     const distance = clamp01(1 - restaurant.distanceMiles / DISTANCE_HORIZON_MILES);
     const rating = qualitySignal(restaurant);
@@ -161,25 +174,21 @@ export function scoreRestaurant(
     };
   }
 
-  const compatibilities = preferences.map((preference) => memberCompatibility(restaurant, preference));
+  const compatibilities = soft.map((entry) => memberCompatibility(restaurant, entry));
   const weakestMember = Math.min(...compatibilities);
   const averageMember = compatibilities.reduce((sum, value) => sum + value, 0) / compatibilities.length;
 
-  const withCuisineOpinion = preferences.filter(
-    (preference) => preference.preferredCuisines.length > 0,
-  );
+  const withCuisineOpinion = soft.filter((entry) => entry.preferredCuisines.length > 0);
   const cuisineMatch =
     withCuisineOpinion.length === 0
       ? 0.5
-      : withCuisineOpinion.filter((preference) =>
-          preference.preferredCuisines.includes(restaurant.cuisine),
-        ).length / withCuisineOpinion.length;
+      : withCuisineOpinion.filter((entry) => entry.preferredCuisines.includes(restaurant.cuisine))
+          .length / withCuisineOpinion.length;
 
   const distance = clamp01(1 - restaurant.distanceMiles / DISTANCE_HORIZON_MILES);
   const rating = qualitySignal(restaurant);
   const priceMatch =
-    preferences.reduce((sum, preference) => sum + priceComfort(restaurant, preference), 0) /
-    preferences.length;
+    soft.reduce((sum, entry) => sum + priceComfort(restaurant, entry), 0) / soft.length;
 
   const total =
     SCORE_WEIGHTS.weakestMember * weakestMember +
