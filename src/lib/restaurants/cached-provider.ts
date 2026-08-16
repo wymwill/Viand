@@ -3,6 +3,7 @@ import type {
   RestaurantSearchInput,
   RestaurantSearchResult,
 } from "@/domain/restaurants/provider";
+import { parseSharedLocation, snapToGrid } from "./geo";
 
 /**
  * Caches searches, and — more importantly — serves a stale result when the
@@ -39,6 +40,7 @@ const DEFAULT_MAX_ENTRIES = 200;
 
 export class CachedRestaurantProvider implements RestaurantProvider {
   private readonly entries = new Map<string, CacheEntry>();
+  private readonly inFlight = new Map<string, Promise<RestaurantSearchResult>>();
   private readonly ttlMs: number;
   private readonly maxEntries: number;
   private readonly now: () => number;
@@ -69,18 +71,30 @@ export class CachedRestaurantProvider implements RestaurantProvider {
       return cached.result;
     }
 
-    try {
-      const result = await this.inner.search(input);
-      // An empty result is not worth caching: it is usually a bad location or a
-      // half-answered query, and caching it would pin that failure in place.
-      if (result.restaurants.length > 0) this.store(key, result);
-      return result;
-    } catch (error) {
-      if (cached) {
-        this.onStale(error, this.now() - cached.storedAt);
-        return cached.result;
+    const existing = this.inFlight.get(key);
+    if (existing) return existing;
+
+    const request = (async () => {
+      try {
+        const result = await this.inner.search(input);
+        // An empty result is not worth caching: it is usually a bad location or a
+        // half-answered query, and caching it would pin that failure in place.
+        if (result.restaurants.length > 0) this.store(key, result);
+        return result;
+      } catch (error) {
+        if (cached) {
+          this.onStale(error, this.now() - cached.storedAt);
+          return cached.result;
+        }
+        throw error;
       }
-      throw error;
+    })();
+
+    this.inFlight.set(key, request);
+    try {
+      return await request;
+    } finally {
+      this.inFlight.delete(key);
     }
   }
 
@@ -96,7 +110,10 @@ export class CachedRestaurantProvider implements RestaurantProvider {
 }
 
 export function cacheKey(input: RestaurantSearchInput): string {
-  const location = input.locationText.trim().toLowerCase().replace(/\s+/g, " ");
+  const shared = parseSharedLocation(input.locationText);
+  const location = shared
+    ? `grid:${snapToGrid(shared)}`
+    : input.locationText.trim().toLowerCase().replace(/\s+/g, " ");
   return [
     location,
     input.radiusMiles,

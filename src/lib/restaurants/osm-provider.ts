@@ -34,20 +34,23 @@ const DEFAULT_OVERPASS_URLS = [
 ];
 const DEFAULT_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 
-/** Overpass is a shared volunteer service; keep the query bounded. */
-const MAX_OVERPASS_RADIUS_METRES = 1_500;
+/** Overpass is a shared volunteer service; keep even configured queries bounded. */
+const MAX_OVERPASS_RADIUS_METRES = 10_000;
+const TIER_1_RADIUS_METRES = 1_500;
+const MIN_RESULTS_BEFORE_ESCALATING = 12;
 const MAX_OVERPASS_RESULTS = 40;
 
 /**
- * Overpass cost scales with the area swept, and this is the single biggest
- * lever on the 504s the public instance returns under load. The group's default
- * five-mile radius asks it to scan roughly 200 km². Live checks showed the
- * public instances answering a 1.5-kilometre query inside the longer client
- * budget while 3-kilometre queries remained unreliable. The group's radius
- * still applies as a filter afterwards — this only bounds how far the upstream
- * query reaches.
+ * Query progressively to limit load on volunteer-run Overpass mirrors. A cheap
+ * 1.5-kilometre pass is enough in result-dense areas; only a thin result set
+ * triggers the full requested radius. On 2026-08-16 one available mirror was
+ * observed answering the existing capped node query in about 11 seconds at
+ * 1.5km and 21.5 seconds at 8047m in both dense and suburban tests, while two
+ * other public endpoints were overloaded even at 1.5km. That supports tiering
+ * and endpoint failover, not a general reliability guarantee. The 10km ceiling
+ * remains defense-in-depth for sparse areas where the result cap may not fill.
  */
-const DEFAULT_MAX_QUERY_RADIUS_METRES = MAX_OVERPASS_RADIUS_METRES;
+const DEFAULT_MAX_QUERY_RADIUS_METRES = 8_100;
 
 /** What we allow Overpass itself to spend. See the note where it is used. */
 const OVERPASS_SERVER_TIMEOUT_SECONDS = 40;
@@ -60,6 +63,12 @@ interface OverpassElement {
   lon?: number;
   center?: { lat: number; lon: number };
   tags?: Record<string, string>;
+}
+
+interface OverpassSearch {
+  elements: OverpassElement[];
+  searchedRadiusMetres: number;
+  radiusDegraded: boolean;
 }
 
 export interface OsmOptions {
@@ -120,6 +129,10 @@ function endpointHost(endpoint: string): string {
   }
 }
 
+function milesFromMetres(metres: number): string {
+  return (Math.round((metres / METRES_PER_MILE) * 10) / 10).toFixed(1);
+}
+
 export class OsmRestaurantProvider implements RestaurantProvider {
   private readonly timeoutMs: number;
   private readonly geocodingTimeoutMs: number;
@@ -144,7 +157,10 @@ export class OsmRestaurantProvider implements RestaurantProvider {
 
   async search(input: RestaurantSearchInput): Promise<RestaurantSearchResult> {
     const { center, label } = await this.resolveLocation(input.locationText);
-    const elements = await this.searchOverpass(center, input.radiusMiles);
+    const { elements, searchedRadiusMetres, radiusDegraded } = await this.searchOverpass(
+      center,
+      input.radiusMiles,
+    );
 
     const restaurants: Restaurant[] = [];
     for (const element of elements) {
@@ -161,7 +177,9 @@ export class OsmRestaurantProvider implements RestaurantProvider {
     return {
       restaurants,
       source: "osm",
-      sourceLabel: OSM_SOURCE_LABEL,
+      sourceLabel: radiusDegraded
+        ? `${OSM_SOURCE_LABEL} Searched within ${milesFromMetres(searchedRadiusMetres)} mi — the full ${input.radiusMiles} mi radius could not be reached right now.`
+        : OSM_SOURCE_LABEL,
       resolvedLocation: label,
     };
   }
@@ -202,12 +220,32 @@ export class OsmRestaurantProvider implements RestaurantProvider {
     };
   }
 
-  private async searchOverpass(center: LatLng, radiusMiles: number): Promise<OverpassElement[]> {
+  private async searchOverpass(center: LatLng, radiusMiles: number): Promise<OverpassSearch> {
     const cap = Math.min(
       this.options.maxQueryRadiusMetres ?? DEFAULT_MAX_QUERY_RADIUS_METRES,
       MAX_OVERPASS_RADIUS_METRES,
     );
-    const radius = Math.round(Math.min(Math.max(radiusMiles * METRES_PER_MILE, 1), cap));
+    const targetRadius = Math.round(Math.min(Math.max(radiusMiles * METRES_PER_MILE, 1), cap));
+    const tier1Radius = Math.min(TIER_1_RADIUS_METRES, targetRadius);
+    const tier1Elements = await this.queryOverpass(center, tier1Radius);
+
+    if (tier1Radius >= targetRadius) {
+      return { elements: tier1Elements, searchedRadiusMetres: targetRadius, radiusDegraded: false };
+    }
+    if (tier1Elements.length >= MIN_RESULTS_BEFORE_ESCALATING) {
+      return { elements: tier1Elements, searchedRadiusMetres: tier1Radius, radiusDegraded: false };
+    }
+
+    try {
+      const elements = await this.queryOverpass(center, targetRadius);
+      return { elements, searchedRadiusMetres: targetRadius, radiusDegraded: false };
+    } catch (error) {
+      if (tier1Elements.length === 0) throw error;
+      return { elements: tier1Elements, searchedRadiusMetres: tier1Radius, radiusDegraded: true };
+    }
+  }
+
+  private async queryOverpass(center: LatLng, radius: number): Promise<OverpassElement[]> {
 
     // Deliberately generous, and deliberately NOT tied to our own budget.
     // Overpass treats this as permission to finish, not a target: set it low

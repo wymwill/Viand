@@ -44,6 +44,44 @@ describe("CachedRestaurantProvider", () => {
     expect(state.calls).toBe(1);
   });
 
+  it("coalesces concurrent searches for the same key", async () => {
+    const state = { calls: 0 };
+    const delayed: RestaurantProvider = {
+      search: async () => {
+        state.calls += 1;
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        return result("shared");
+      },
+    };
+    const cached = new CachedRestaurantProvider(delayed, { onStale: silent });
+
+    const [first, second] = await Promise.all([cached.search(input), cached.search(input)]);
+
+    expect(state.calls).toBe(1);
+    expect(first.restaurants).toHaveLength(2);
+    expect(second.restaurants).toHaveLength(2);
+  });
+
+  it("reuses cache entries for nearby shared locations", async () => {
+    const { provider, state } = source();
+    const cached = new CachedRestaurantProvider(provider, { onStale: silent });
+
+    await cached.search({ ...input, locationText: "37.8715,-122.2730" });
+    await cached.search({ ...input, locationText: "37.8720,-122.2735" });
+
+    expect(state.calls).toBe(1);
+  });
+
+  it("does not reuse cache entries for distant shared locations", async () => {
+    const { provider, state } = source();
+    const cached = new CachedRestaurantProvider(provider, { onStale: silent });
+
+    await cached.search({ ...input, locationText: "37.8715,-122.2730" });
+    await cached.search({ ...input, locationText: "37.9500,-122.3500" });
+
+    expect(state.calls).toBe(2);
+  });
+
   it("treats a different radius as a different search", async () => {
     const { provider, state } = source();
     const cached = new CachedRestaurantProvider(provider, { onStale: silent });

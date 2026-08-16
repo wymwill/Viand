@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { OSM_SOURCE_LABEL } from "@/domain/restaurants/provider";
 import { OsmRestaurantProvider, shortLocationLabel } from "@/lib/restaurants/osm-provider";
 
 const CENTER = { lat: 37.8715, lon: -122.273 };
@@ -67,7 +68,10 @@ describe("Overpass endpoint failover", () => {
       tried.push(url);
       // First endpoint is saturated, second answers.
       if (tried.length === 1) return new Response("", { status: 504 });
-      return new Response(JSON.stringify({ elements: [node()] }), { status: 200 });
+      return new Response(
+        JSON.stringify({ elements: Array.from({ length: 12 }, (_, id) => node({ id })) }),
+        { status: 200 },
+      );
     }) as unknown as typeof fetch;
 
     const result = await new OsmRestaurantProvider({
@@ -75,8 +79,10 @@ describe("Overpass endpoint failover", () => {
       overpassUrl: "https://a.example/api,https://b.example/api",
     }).search(search);
 
+    // Twelve results satisfy the first pass, so failover costs one query per
+    // endpoint and never escalates to the full radius.
     expect(tried).toHaveLength(2);
-    expect(result.restaurants).toHaveLength(1);
+    expect(result.restaurants).toHaveLength(12);
   });
 
   it("does not let a hanging primary block a healthy fallback", async () => {
@@ -158,12 +164,106 @@ describe("Overpass endpoint failover", () => {
 });
 
 describe("Overpass query cost", () => {
-  it("bounds the query radius well inside the group's search radius", async () => {
-    // Five miles is ~8km; the query must not sweep that far or the public
-    // instance starts returning 504s.
-    await provider([node()]).search({ locationText: "Berkeley", radiusMiles: 5 });
-    const around = /around:(\d+)/.exec(lastQuery);
-    expect(Number(around?.[1])).toBe(1500);
+  it("escalates a thin first pass to the group's full search radius", async () => {
+    const queries: string[] = [];
+    const fetchImpl = (async (target: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(target);
+      if (url.includes("nominatim")) return stubFetch([])(target as RequestInfo, init);
+      queries.push(decodeURIComponent(String(init?.body ?? "")));
+      return new Response(JSON.stringify({ elements: [node()] }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await new OsmRestaurantProvider({ fetchImpl, overpassUrl: "https://a.example/api" }).search({
+      locationText: "Berkeley",
+      radiusMiles: 5,
+    });
+
+    expect(queries.map((query) => Number(/around:(\d+)/.exec(query)?.[1]))).toEqual([1500, 8047]);
+  });
+
+  it("stops after the cheap tier when it finds enough results", async () => {
+    const calls: string[] = [];
+    const elements = Array.from({ length: 15 }, (_, id) => node({ id: id + 1 }));
+    const fetchImpl = (async (target: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(target);
+      calls.push(url);
+      if (url.includes("nominatim")) return stubFetch([])(target as RequestInfo, init);
+      lastQuery = decodeURIComponent(String(init?.body ?? ""));
+      return new Response(JSON.stringify({ elements }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const result = await new OsmRestaurantProvider({
+      fetchImpl,
+      overpassUrl: "https://a.example/api",
+    }).search(search);
+
+    expect(calls).toHaveLength(2);
+    expect(calls.filter((url) => !url.includes("nominatim"))).toHaveLength(1);
+    expect(Number(/around:(\d+)/.exec(lastQuery)?.[1])).toBe(1500);
+    expect(result.sourceLabel).toBe(OSM_SOURCE_LABEL);
+  });
+
+  it("uses the full-radius result after a successful escalation", async () => {
+    const radii: number[] = [];
+    const fetchImpl = (async (target: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(target);
+      if (url.includes("nominatim")) return stubFetch([])(target as RequestInfo, init);
+      const query = decodeURIComponent(String(init?.body ?? ""));
+      const radius = Number(/around:(\d+)/.exec(query)?.[1]);
+      radii.push(radius);
+      const elements = radius === 1500 ? [node({ id: 1 }), node({ id: 2 })] : [node({ id: 99 })];
+      return new Response(JSON.stringify({ elements }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const result = await new OsmRestaurantProvider({
+      fetchImpl,
+      overpassUrl: "https://a.example/api",
+    }).search(search);
+
+    expect(radii).toEqual([1500, 8047]);
+    expect(result.restaurants.map((restaurant) => restaurant.id)).toEqual(["node/99"]);
+    expect(result.sourceLabel).toBe(OSM_SOURCE_LABEL);
+  });
+
+  it("serves a thin first tier with an honest label when escalation fails", async () => {
+    let overpassCalls = 0;
+    const fetchImpl = (async (target: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(target);
+      if (url.includes("nominatim")) return stubFetch([])(target as RequestInfo, init);
+      overpassCalls += 1;
+      if (overpassCalls === 1) {
+        return new Response(JSON.stringify({ elements: [node({ id: 1 }), node({ id: 2 })] }));
+      }
+      return new Response("", { status: 504 });
+    }) as unknown as typeof fetch;
+
+    const result = await new OsmRestaurantProvider({
+      fetchImpl,
+      overpassUrl: ["https://a.example/api", "https://b.example/api"],
+    }).search(search);
+
+    expect(result.restaurants).toHaveLength(2);
+    expect(result.sourceLabel).not.toBe(OSM_SOURCE_LABEL);
+    expect(result.sourceLabel).toContain("0.9 mi");
+    expect(result.sourceLabel).toContain("full 5 mi radius could not be reached");
+  });
+
+  it("throws when the first tier is empty and escalation fails everywhere", async () => {
+    let overpassCalls = 0;
+    const fetchImpl = (async (target: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(target);
+      if (url.includes("nominatim")) return stubFetch([])(target as RequestInfo, init);
+      overpassCalls += 1;
+      if (overpassCalls === 1) return new Response(JSON.stringify({ elements: [] }));
+      return new Response("", { status: 504 });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      new OsmRestaurantProvider({
+        fetchImpl,
+        overpassUrl: ["https://a.example/api", "https://b.example/api"],
+      }).search(search),
+    ).rejects.toThrow("All Overpass endpoints failed");
   });
 
   it("never asks for more than the group's radius", async () => {

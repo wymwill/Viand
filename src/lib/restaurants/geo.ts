@@ -6,6 +6,10 @@ export interface LatLng {
 }
 
 export const METRES_PER_MILE = 1609.344;
+/** Side length of the cache-bucketing grid. Coarse enough to raise the cache
+ * hit rate for nearby shares, fine enough that two different neighbourhoods
+ * never collide. */
+export const CACHE_GRID_CELL_METRES = 750;
 const EARTH_RADIUS_MILES = 3958.8;
 
 /** A plain "lat,lng" pair, which is how a shared location usually arrives. */
@@ -35,6 +39,22 @@ export function parseSharedLocation(locationText: string): LatLng | null {
   const latitude = Number(match[1]);
   const longitude = Number(match[2]);
   return isPlausible(latitude, longitude) ? { latitude, longitude } : null;
+}
+
+/**
+ * Buckets a coordinate onto a metre-scale grid so nearby searches can share a
+ * cache entry. Longitude cells are widened by 1/cos(latitude) so they stay
+ * roughly square near the poles; this is a cache key, not a distance
+ * calculation, so the approximation only needs to be stable, not precise.
+ */
+export function snapToGrid(center: LatLng, cellMetres = CACHE_GRID_CELL_METRES): string {
+  const metresPerDegreeLat = 111_320;
+  const metresPerDegreeLng = metresPerDegreeLat * Math.cos((center.latitude * Math.PI) / 180);
+  const latCell = Math.round((center.latitude * metresPerDegreeLat) / cellMetres);
+  const lngCell = Math.round(
+    (center.longitude * Math.max(metresPerDegreeLng, 1)) / cellMetres,
+  );
+  return `${latCell}:${lngCell}`;
 }
 
 export function distanceMiles(from: LatLng, to: LatLng): number {

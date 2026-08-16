@@ -83,11 +83,22 @@ dependable ratings or prices, and its `opening_hours` grammar is not currently
 parsed.
 
 The configured Overpass endpoints share one deadline and the first valid
-response wins, so a hanging instance cannot block failover. Public queries are
-capped at 1.5 kilometres and have a 30-second client budget. Successful
-searches are cached in the current server process and can be served stale if
-the upstream source later fails. This protects a warm process from short
-outages, but it is not a durable cross-instance cache.
+response wins, so a hanging instance cannot block failover.
+
+A full five-mile query asks Overpass to sweep roughly 200 km², which the public
+instances answer unreliably, so the search runs in tiers. A cheap 1.5 kilometre
+pass goes first; only a thin result set escalates to the group's full radius.
+In a dense area the first pass already answers, and the expensive query is never
+made. If the wider query then fails, the group is given the closer results *and*
+told the full radius could not be reached — a narrower search is never presented
+as a complete one.
+
+Successful searches are cached in the current server process and can be served
+stale if the upstream source later fails. Shared coordinates are cached on a
+750-metre grid, so two people sharing a location from the same block hit one
+entry, and identical simultaneous searches are coalesced into a single upstream
+request. This protects a warm process from short outages, but it is not a
+durable cross-instance cache.
 
 Nominatim and the public Overpass instances are shared volunteer services with
 usage policies and operational limits. Set an identifying `OSM_USER_AGENT`.

@@ -77,8 +77,8 @@ const schema = z
     NOMINATIM_TIMEOUT_MS: z.coerce.number().int().positive().default(8_000),
     /** Total Overpass budget shared across the configured endpoints. */
     OSM_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
-    /** Public Overpass queries are capped at 1.5km even if configured higher. */
-    OSM_MAX_QUERY_RADIUS_METRES: z.coerce.number().int().positive().default(1_500),
+    /** Ceiling for the full-radius Overpass query; a cheap 1.5km first pass runs before this is ever reached. */
+    OSM_MAX_QUERY_RADIUS_METRES: z.coerce.number().int().positive().default(8_100),
   })
   .superRefine((env, ctx) => {
     // Credentials are required by the transport that is actually selected, so a

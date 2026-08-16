@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chainIdOf, distanceMiles, parseSharedLocation } from "@/lib/restaurants/geo";
+import { chainIdOf, distanceMiles, parseSharedLocation, snapToGrid } from "@/lib/restaurants/geo";
 
 const BERKELEY = { latitude: 37.8715, longitude: -122.273 };
 
@@ -41,6 +41,24 @@ describe("distanceMiles", () => {
     const far = distanceMiles(BERKELEY, { latitude: 34.0522, longitude: -118.2437 });
     expect(far).toBeGreaterThan(320);
     expect(far).toBeLessThan(360);
+  });
+});
+
+describe("snapToGrid", () => {
+  it("puts nearby points in the same bucket", () => {
+    expect(snapToGrid(BERKELEY)).toBe(
+      snapToGrid({ latitude: 37.872, longitude: -122.2735 }),
+    );
+  });
+
+  it("puts far-apart points in different buckets", () => {
+    expect(snapToGrid(BERKELEY)).not.toBe(
+      snapToGrid({ latitude: 37.95, longitude: -122.35 }),
+    );
+  });
+
+  it("is stable for the same coordinate", () => {
+    expect(snapToGrid(BERKELEY)).toBe(snapToGrid(BERKELEY));
   });
 });
 
