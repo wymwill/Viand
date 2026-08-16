@@ -1,8 +1,36 @@
-# Viand MVP
+# Viand
 
-A minimal Next.js app that receives signed `message.received` events through
-the official Linq TypeScript SDK, processes them through a deterministic
-restaurant-decision state machine, and replies in the same Linq chat.
+[![CI](https://github.com/wymwill/Viand/actions/workflows/ci.yml/badge.svg)](https://github.com/wymwill/Viand/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+A bot that lives in a group chat and gets everyone to one restaurant. Members
+talk normally — "Mexican under $25", "I'm vegetarian", "the taco place works" —
+and a deterministic state machine drives the group to a single decision.
+
+The interesting problem is not finding good restaurants. It is that a group's
+best option is rarely anyone's favourite. Viand optimises for the **least
+satisfied member**, not the average, so an option that delights three people and
+fails a fourth loses to one everybody can live with.
+
+That is measured rather than asserted. `npm run eval` grades the shipped scorer
+against alternatives on a seeded synthetic corpus, using latent preference
+vectors no strategy is allowed to see:
+
+| Strategy | Min satisfaction (fairness) | Mean satisfaction | Hard-constraint violations |
+| --- | --- | --- | --- |
+| Naive averaging of stated preferences | 0.276 | 0.541 | 9 |
+| **The shipped deterministic scorer** | **0.450** | **0.624** | **0** |
+
+<sub>15 groups, seed `20260815`. Reproduce with `npm run eval -- --seed=20260815 --groups=15`.
+See [Evaluating the recommender](#evaluating-the-recommender) for the method and its limits.</sub>
+
+Two hard rules fall out of the design. A dietary requirement is a *constraint*,
+never a weighted preference — the type system makes conflating the two a compile
+error. And the recommendation path is pure: no network, no clock, no randomness,
+no model, enforced by a test.
+
+Runs on Next.js 16, React 19, TypeScript (strict) and Vitest, over iMessage
+(via Linq) or Telegram.
 
 ## Run locally
 
@@ -139,6 +167,58 @@ a 401. Deduplication keys off `update_id`, so Telegram's retries are safe.
 A Telegram bot cannot open a conversation — someone has to message it first —
 which is why `createChat` is unsupported on this transport. Nothing in the
 conversation flow needs it.
+
+## Evaluating the recommender
+
+```sh
+npm run eval
+```
+
+Builds a seeded synthetic corpus — 50 groups of 2–6 people over a 60-restaurant
+catalogue — and runs three strategies against the same candidates:
+
+| | Strategy |
+| --- | --- |
+| (a) | Naive averaging of the stated preference vectors |
+| (b) | One unstructured model prompt over the raw member sentences |
+| (c) | The shipped deterministic scorer |
+
+Each synthetic member has a **latent utility vector** that no strategy sees, and
+their stated preference is a lossy projection of it. Satisfaction is graded
+against the latent vector, so the deterministic scorer is not measured with its
+own objective — which would make it win by construction and prove nothing.
+
+Reported per strategy: mean of each group's *least satisfied* member (the
+fairness number), mean satisfaction, the worst single group, and hard-constraint
+violations. A member whose hard constraint is broken scores 0, not a penalty.
+Groups a strategy declined are reported separately rather than scored as zero:
+"nothing here works for all of you" is a different outcome from a bad pick.
+
+Strategy (b) needs `ANTHROPIC_API_KEY`; without one it is skipped and the report
+says so, so the harness is useful with no credentials. Everything else is
+deterministic — the corpus is a pure function of `--seed`, pinned by a digest in
+`tests/unit/eval-harness.test.ts`.
+
+Measured over 15 groups at seed `20260815`:
+
+| Strategy | Min sat. | Mean sat. | Worst grp | Violations | Answered | Abstained |
+| --- | --- | --- | --- | --- | --- | --- |
+| (a) naive averaging | 0.276 | 0.541 | 0.000 | 9 | 15 | 0 |
+| (c) deterministic scorer | 0.450 | 0.624 | 0.253 | 0 | 14 | 1 |
+
+The scorer wins on fairness and mean alike, and never breaks a hard constraint —
+naive averaging breaks nine, because averaging a restriction with a preference is
+exactly the mistake that produces "we found somewhere great, sorry about the
+vegetarian". It also declined one group outright rather than answer badly.
+
+**What this does not show.** Strategy (b) has not been funded, so the comparison
+above is only against a naive baseline. And the corpus is synthetic: it measures
+whether the objective is optimised well, not whether the objective matches what
+real groups want.
+
+```sh
+npm run eval -- --seed=7 --groups=20 --catalogue=mock --strategies=a,c --json
+```
 
 ## Scope
 

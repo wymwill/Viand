@@ -1,5 +1,10 @@
 .DS_Store
 .artifacts/
+
+# Local agent/editor tooling and notes; not part of the project.
+.claude/
+CLAUDE.md
+
 .env
 .env.local
 .env.*.local
