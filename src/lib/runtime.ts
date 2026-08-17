@@ -81,6 +81,10 @@ export function processMessage(message: InboundMessage) {
   return processWith(getLiveRuntime(), message, getMessagingProvider());
 }
 
+export function processMessageWithProvider(message: InboundMessage, messaging: MessagingProvider) {
+  return processWith(getLiveRuntime(), message, messaging);
+}
+
 /** Dashboard-only path: separate state and no Linq calls, even in live mode. */
 export function processSimulatedMessage(message: InboundMessage) {
   return processWith(getSimulationRuntime(), message, getMockMessagingProvider());

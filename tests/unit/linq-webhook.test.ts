@@ -49,6 +49,7 @@ describe("inboundFromLinq", () => {
       isGroup: true,
       senderHandle: "+15555550100",
       text: "pick a place\nnear downtown",
+      wasInvoked: false,
     });
   });
 

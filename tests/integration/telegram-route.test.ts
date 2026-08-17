@@ -96,11 +96,54 @@ describe("Telegram webhook route", () => {
     });
   });
 
-  it("ignores Telegram deliveries when Linq is the active transport", async () => {
+  it("processes a Telegram delivery while another transport is the configured default", async () => {
+    // The capability that lets one deployment run Telegram and Discord at
+    // once: MESSAGING_PROVIDER names a different transport, but Telegram is
+    // fully configured, so its own route still answers it.
+    process.env.MESSAGING_PROVIDER = "discord";
+    process.env.DISCORD_APPLICATION_ID = "123456789012345678";
+    process.env.DISCORD_PUBLIC_KEY = "0".repeat(64);
+    process.env.DISCORD_BOT_TOKEN = "discord-token";
+    process.env.TELEGRAM_BOT_TOKEN = "telegram-token";
+    resetEnvCache();
+    resetRuntime();
+
+    const sent: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: string) => {
+      sent.push(String(url));
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, result: { message_id: 1, chat: { id: -100999 } } }),
+      };
+    }) as unknown as typeof fetch;
+
+    try {
+      const response = await POST(request(updateBody(9)));
+      expect(response.status).toBe(202);
+      await expect(response.json()).resolves.toEqual({ accepted: true, processed: true });
+      // Answered over Telegram, never over the configured default.
+      expect(sent.every((url) => url.includes("api.telegram.org"))).toBe(true);
+      expect(sent.some((url) => url.includes("discord.com"))).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  /**
+   * A route serves its own transport whenever that transport can answer, so
+   * one deployment can run Telegram and Discord at once. What must never
+   * happen is a Telegram conversation being answered over a different
+   * transport — so with another provider configured and no Telegram bot token
+   * available to reply with, the delivery is refused rather than processed.
+   */
+  it("refuses a Telegram delivery it has no Telegram credentials to answer", async () => {
     process.env.MESSAGING_PROVIDER = "linq";
     process.env.LINQ_API_KEY = "test-api-key";
     process.env.LINQ_PHONE_NUMBER = "+15555550123";
     process.env.LINQ_WEBHOOK_SECRET = "linq-secret";
+    delete process.env.TELEGRAM_BOT_TOKEN;
     resetEnvCache();
 
     const response = await POST(request(updateBody(8)));

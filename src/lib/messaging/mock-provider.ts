@@ -1,10 +1,11 @@
 import {
   containsUrl,
+  chunkMessage,
   MAX_RECIPIENTS,
   MessagingError,
   type CreateChatInput,
   type MessagingChat,
-  type MessagingProvider,
+  type ChatCreatingMessagingProvider,
   type SendMessageInput,
   type SentMessage,
   type UpdateGroupInput,
@@ -21,7 +22,13 @@ export interface RecordedMessage {
  * conversation, and it enforces the same Linq constraints as the real provider
  * so those rules are exercised without a live account.
  */
-export class MockMessagingProvider implements MessagingProvider {
+export class MockMessagingProvider implements ChatCreatingMessagingProvider {
+  readonly capabilities = {
+    maxMessageLength: 10_000,
+    supportsThreads: false,
+    supportsReactions: false,
+    canCreateChat: true,
+  } as const;
   readonly sent: RecordedMessage[] = [];
   readonly chats: MessagingChat[] = [];
   private counter = 0;
@@ -50,7 +57,9 @@ export class MockMessagingProvider implements MessagingProvider {
   }
 
   async sendMessage(input: SendMessageInput): Promise<SentMessage> {
-    this.sent.push({ chatId: input.chatId, text: input.text });
+    for (const text of chunkMessage(input.text, this.capabilities.maxMessageLength)) {
+      this.sent.push({ chatId: input.chatId, text });
+    }
     return { messageId: this.nextId("msg"), chatId: input.chatId };
   }
 

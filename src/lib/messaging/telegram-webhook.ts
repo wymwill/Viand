@@ -15,17 +15,29 @@ export interface TelegramUpdate {
  * convention is a leading slash. Both are transport syntax rather than user
  * intent, so they are stripped here — leaving parseCommand to see the same
  * plain "eat" it receives from iMessage.
+ *
+ * wasInvoked reflects the "@BotName" mention specifically, not the leading
+ * slash: with privacy mode disabled Viand receives every message in a group,
+ * including slash commands addressed to *other* bots sharing the chat
+ * ("/weather@WeatherBot"). Treating a bare slash as an invocation would make
+ * Viand start a session on a command meant for someone else.
  */
-export function normaliseTelegramText(text: string, botUsername?: string): string {
+export function normaliseTelegramMessage(text: string, botUsername?: string): { text: string; wasInvoked: boolean } {
   let result = text.trim();
+  let wasInvoked = false;
 
   if (botUsername) {
     const mention = new RegExp(`@${botUsername}\\b`, "gi");
+    wasInvoked = mention.test(result);
     result = result.replace(mention, " ");
   }
 
   result = result.replace(/^\/(?=\S)/, "");
-  return result.replace(/\s+/g, " ").trim();
+  return { text: result.replace(/\s+/g, " ").trim(), wasInvoked };
+}
+
+export function normaliseTelegramText(text: string, botUsername?: string): string {
+  return normaliseTelegramMessage(text, botUsername).text;
 }
 
 /**
@@ -47,8 +59,8 @@ export function inboundFromTelegram(
     return null;
   }
 
-  const text = normaliseTelegramText(message.text ?? "", botUsername);
-  if (!text) return null;
+  const { text, wasInvoked } = normaliseTelegramMessage(message.text ?? "", botUsername);
+  if (!text && !wasInvoked) return null;
 
   const chatType = message.chat?.type;
 
@@ -62,5 +74,6 @@ export function inboundFromTelegram(
     // identity has to stay stable across a decision session.
     senderHandle: `tg:${senderId}`,
     text,
+    wasInvoked,
   };
 }

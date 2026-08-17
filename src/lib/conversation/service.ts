@@ -17,6 +17,8 @@ export interface InboundMessage {
   /** The sender's Linq handle (E.164 or email). Stable member identity. */
   senderHandle: string;
   text: string;
+  /** Transport syntax explicitly addressed this message to Viand. */
+  wasInvoked: boolean;
 }
 
 export interface ConversationDeps {
@@ -48,7 +50,11 @@ export async function handleInboundMessage(
   const fresh = await deps.store.markEventProcessed(message.eventId, "message.received");
   if (!fresh) return { processed: false, replies: [] };
 
-  const command = parseCommand(message.text);
+  // A bare transport mention has no content after adapter syntax is stripped,
+  // but retains the historical meaning of a bare "Viand" wake phrase.
+  const command = message.wasInvoked && message.text.length === 0
+    ? ({ kind: "PICK_A_PLACE" } as const)
+    : parseCommand(message.text);
 
   // Opt-out / opt-in are handled independently of session state.
   if (command.kind === "STOP") {
@@ -83,7 +89,7 @@ export async function handleInboundMessage(
   // so a stray HELP cannot leave the chat parked in COLLECTING_LOCATION where
   // the next unrelated message would be read as a location.
   if (isIdle) {
-    const disposition = idleDisposition(command);
+    const disposition = idleDisposition(command, message.wasInvoked);
     if (disposition === "ignore") return { processed: true, replies: [] };
     if (disposition === "answer") {
       const text = command.kind === "HELP" ? copy.HELP : copy.NOTHING_RUNNING;
@@ -113,6 +119,7 @@ export async function handleInboundMessage(
     memberId: message.senderHandle,
     interpretation,
     restaurants: deps.restaurants,
+    now: new Date(),
   });
 
   await deps.store.save({ ...stored, snapshot });

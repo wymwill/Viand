@@ -73,6 +73,18 @@ export const SEARCH_UNAVAILABLE = [
   "Send DONE to try again, or CANCEL to stop.",
 ].join("\n");
 
+/**
+ * Last resort when a reply was promised but the work behind it threw. Some
+ * transports show a pending placeholder the moment a command arrives, and an
+ * unanswered one waits forever; saying the attempt failed is strictly better
+ * than a spinner that never resolves.
+ */
+export const REQUEST_FAILED = [
+  "Something went wrong on my end and I couldn't finish that.",
+  "",
+  "Try again in a moment, or send CANCEL to stop.",
+].join("\n");
+
 export const NO_OPTIONS_FOUND = [
   "I couldn't find anywhere that works for everyone's restrictions.",
   "",
@@ -148,8 +160,9 @@ function yelpSearchUrl(restaurant: Restaurant): string {
  * website or phone is left out rather than rendered as an empty field.
  */
 export function placeDetails(restaurant: Restaurant): string {
-  const facts = [formatPrice(restaurant.priceLevel), formatDistance(restaurant.distanceMiles)];
-  if (restaurant.rating > 0) facts.push(star(restaurant.rating));
+  const facts = [formatDistance(restaurant.distanceMiles)];
+  if (restaurant.priceLevel != null) facts.unshift(formatPrice(restaurant.priceLevel));
+  if (isKnownRating(restaurant.rating)) facts.push(star(restaurant.rating));
 
   const lines = [restaurant.name, facts.join(" · ")];
 
@@ -161,6 +174,7 @@ export function placeDetails(restaurant: Restaurant): string {
     lines.push(`Options for: ${labels.join(", ")}`);
   }
   if (restaurant.phone) lines.push(`Phone: ${restaurant.phone}`);
+  if (restaurant.openNow == null) lines.push(unverifiedHours(restaurant.openingHoursRaw));
 
   lines.push("");
   if (restaurant.website) lines.push(`Website: ${restaurant.website}`);
@@ -168,6 +182,20 @@ export function placeDetails(restaurant: Restaurant): string {
   lines.push(`Look up on Yelp: ${yelpSearchUrl(restaurant)}`);
 
   return lines.join("\n");
+}
+
+function unverifiedHours(raw: string | null): string {
+  return raw ? `Hours: ${raw} (unverified, call ahead)` : "Hours unverified, call ahead";
+}
+
+/**
+ * A source with no rating must not be rendered as a rating of zero — "0.0★"
+ * reads as terrible rather than as unknown. Both sentinels are checked because
+ * `null` is the current shape and `0` is what older fixtures and some sources
+ * still carry; either way the star is omitted rather than guessed at.
+ */
+function isKnownRating(rating: number | null): rating is number {
+  return rating != null && rating > 0;
 }
 
 /** Where the options came from, so the group is never misled about the data. */
@@ -190,10 +218,9 @@ export function recommendations(
 
   candidates.forEach((candidate, index) => {
     const { restaurant } = candidate;
-    const facts = [`${restaurant.distanceMiles.toFixed(1)} mi`, formatPrice(restaurant.priceLevel)];
-    // A source with no rating for this restaurant must not be rendered as a
-    // rating of zero — "0.0★" reads as terrible rather than as unknown.
-    if (restaurant.rating > 0) facts.push(star(restaurant.rating));
+    const facts = [`${restaurant.distanceMiles.toFixed(1)} mi`];
+    if (restaurant.priceLevel != null) facts.push(formatPrice(restaurant.priceLevel));
+    if (isKnownRating(restaurant.rating)) facts.push(star(restaurant.rating));
     lines.push(`${index + 1}. ${restaurant.name} — ${facts.join(" · ")}`);
     lines.push(`   ${candidate.explanation}`);
     lines.push("");

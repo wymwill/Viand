@@ -2,6 +2,7 @@ import { getEnv, resolveMessagingProvider } from "../env";
 import { LinqMessagingProvider } from "./linq-provider";
 import { MockMessagingProvider } from "./mock-provider";
 import { TelegramMessagingProvider } from "./telegram-provider";
+import { DiscordMessagingProvider } from "./discord-provider";
 import type { MessagingProvider } from "./provider";
 
 let mockSingleton: MockMessagingProvider | null = null;
@@ -19,6 +20,8 @@ export function getMessagingProvider(): MessagingProvider {
       return new LinqMessagingProvider();
     case "telegram":
       return new TelegramMessagingProvider();
+    case "discord":
+      return new DiscordMessagingProvider();
     case "mock":
       mockSingleton ??= new MockMessagingProvider();
       return mockSingleton;

@@ -1,9 +1,7 @@
 import { getEnv } from "../env";
 import {
   MessagingError,
-  type CreateChatInput,
-  type MessagingChat,
-  type MessagingProvider,
+  type ReplyOnlyMessagingProvider,
   type SendMessageInput,
   type SentMessage,
 } from "./provider";
@@ -51,7 +49,13 @@ export function chunkForTelegram(
  * which is why only sendMessage is implemented. That is sufficient because the
  * conversation service only ever replies into an existing chat.
  */
-export class TelegramMessagingProvider implements MessagingProvider {
+export class TelegramMessagingProvider implements ReplyOnlyMessagingProvider {
+  readonly capabilities = {
+    maxMessageLength: TELEGRAM_MAX_MESSAGE_CHARS,
+    supportsThreads: true,
+    supportsReactions: true,
+    canCreateChat: false,
+  } as const;
   private readonly apiBase: string;
   private readonly timeoutMs: number;
   private readonly fetchImpl: typeof fetch;
@@ -110,9 +114,4 @@ export class TelegramMessagingProvider implements MessagingProvider {
     };
   }
 
-  async createChat(_input: CreateChatInput): Promise<MessagingChat> {
-    throw new MessagingError(
-      "Telegram bots cannot start a conversation; the user must message the bot first.",
-    );
-  }
 }

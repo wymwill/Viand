@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { processSimulatedMessage } from "@/lib/runtime";
+import { normalisePlainMention } from "@/lib/messaging/mention";
 
 const simulationSchema = z.object({
   chatId: z.string().min(1).max(100).default("demo-group"),
@@ -18,12 +19,14 @@ export async function POST(request: Request) {
     );
   }
 
+  const normalised = normalisePlainMention(parsed.data.text);
   const result = await processSimulatedMessage({
     eventId: randomUUID(),
     linqChatId: parsed.data.chatId,
     isGroup: true,
     senderHandle: parsed.data.sender,
-    text: parsed.data.text,
+    text: normalised.text,
+    wasInvoked: normalised.wasInvoked,
   });
 
   return NextResponse.json(result);

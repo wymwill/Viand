@@ -12,7 +12,12 @@ function inbound(text: string, chatId = "chat-1"): InboundMessage {
     isGroup: true,
     senderHandle: "+15555550100",
     text,
+    wasInvoked: false,
   };
+}
+
+function invoked(text: string): InboundMessage {
+  return { ...inbound(text), wasInvoked: true };
 }
 
 function dependencies() {
@@ -25,6 +30,20 @@ function dependencies() {
 }
 
 describe("conversation session activation", () => {
+  it("treats a stripped bare mention as the existing wake phrase", async () => {
+    const deps = dependencies();
+    const result = await handleInboundMessage(invoked(""), deps);
+    expect(result.replies).toHaveLength(1);
+    expect((await deps.store.load("chat-1"))?.snapshot.state).toBe("COLLECTING_LOCATION");
+  });
+
+  it.each(["help", "cancel"])("answers invoked %s without creating a session", async (text) => {
+    const deps = dependencies();
+    const result = await handleInboundMessage(invoked(text), deps);
+    expect(result.replies).toHaveLength(1);
+    expect(await deps.store.load("chat-1")).toBeNull();
+  });
+
   it("ignores ordinary messages while a chat is idle", async () => {
     const deps = dependencies();
     const result = await handleInboundMessage(inbound("Downtown Berkeley"), deps);

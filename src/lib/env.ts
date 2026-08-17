@@ -25,7 +25,7 @@ const schema = z
      * Which transport actually moves messages. Leave unset to keep the legacy
      * USE_MOCK_LINQ behaviour; see resolveMessagingProvider below.
      */
-    MESSAGING_PROVIDER: z.enum(["mock", "linq", "telegram"]).optional(),
+    MESSAGING_PROVIDER: z.enum(["mock", "linq", "telegram", "discord"]).optional(),
 
     LINQ_API_KEY: z.string().optional(),
     LINQ_PHONE_NUMBER: e164.optional(),
@@ -45,6 +45,10 @@ const schema = z
     TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
     TELEGRAM_BOT_USERNAME: z.string().optional(),
     TELEGRAM_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
+
+    DISCORD_PUBLIC_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, "must be a 32-byte hex key").optional(),
+    DISCORD_BOT_TOKEN: z.string().optional(),
+    DISCORD_APPLICATION_ID: z.string().regex(/^\d+$/, "must be a numeric application id").optional(),
 
     UPSTASH_REDIS_REST_URL: z.string().url().optional(),
     UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
@@ -109,6 +113,12 @@ const schema = z
       }
     }
 
+    if (provider === "discord") {
+      for (const key of ["DISCORD_PUBLIC_KEY", "DISCORD_BOT_TOKEN", "DISCORD_APPLICATION_ID"] as const) {
+        if (!env[key]) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} is required when MESSAGING_PROVIDER=discord` });
+      }
+    }
+
     if (env.USE_AI_INTERPRETER && !env.ANTHROPIC_API_KEY) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -129,7 +139,7 @@ const schema = z
 
 export type Env = z.infer<typeof schema>;
 
-export type MessagingProviderName = "mock" | "linq" | "telegram";
+export type MessagingProviderName = "mock" | "linq" | "telegram" | "discord";
 
 /**
  * Shared by the schema's own validation and by the provider factory, so the

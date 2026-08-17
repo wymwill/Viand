@@ -12,6 +12,9 @@ function clearMessagingEnv(): void {
     "LINQ_WEBHOOK_SECRET",
     "TELEGRAM_BOT_TOKEN",
     "TELEGRAM_WEBHOOK_SECRET",
+    "DISCORD_PUBLIC_KEY",
+    "DISCORD_BOT_TOKEN",
+    "DISCORD_APPLICATION_ID",
   ]) {
     delete process.env[key];
   }
@@ -74,5 +77,23 @@ describe("messaging credential validation", () => {
     resetEnvCache();
 
     expect(() => getEnv()).toThrow(/TELEGRAM_BOT_TOKEN/);
+  });
+
+  it("requires public key, bot token, and application id when discord is selected", () => {
+    process.env.MESSAGING_PROVIDER = "discord";
+    resetEnvCache();
+
+    expect(() => getEnv()).toThrow(/DISCORD_PUBLIC_KEY/);
+  });
+
+  it("validates a Discord deploy once all three settings are present", () => {
+    process.env.MESSAGING_PROVIDER = "discord";
+    process.env.DISCORD_PUBLIC_KEY = "a".repeat(64);
+    process.env.DISCORD_BOT_TOKEN = "token";
+    process.env.DISCORD_APPLICATION_ID = "123456789";
+    resetEnvCache();
+
+    expect(() => getEnv()).not.toThrow();
+    expect(resolveMessagingProvider(getEnv())).toBe("discord");
   });
 });

@@ -2,11 +2,12 @@ import LinqAPIV3 from "@linqapp/sdk";
 import { getEnv } from "../env";
 import {
   containsUrl,
+  chunkMessage,
   MAX_RECIPIENTS,
   MessagingError,
   type CreateChatInput,
   type MessagingChat,
-  type MessagingProvider,
+  type ChatCreatingMessagingProvider,
   type SendMessageInput,
   type SentMessage,
 } from "./provider";
@@ -22,7 +23,13 @@ import {
  * message; sendMessage sends into an existing chat by resolving it from the
  * recipient set is avoided — we send by chat id via a text part.
  */
-export class LinqMessagingProvider implements MessagingProvider {
+export class LinqMessagingProvider implements ChatCreatingMessagingProvider {
+  readonly capabilities = {
+    maxMessageLength: 10_000,
+    supportsThreads: false,
+    supportsReactions: false,
+    canCreateChat: true,
+  } as const;
   private readonly client: LinqAPIV3;
   private readonly fromNumber: string;
 
@@ -70,10 +77,14 @@ export class LinqMessagingProvider implements MessagingProvider {
   async sendMessage(input: SendMessageInput): Promise<SentMessage> {
     // Send into a known chat by id via the chat-scoped messages resource:
     //   client.chats.messages.send(chatId, { message: { parts } }) -> { id }
-    const response = await this.client.chats.messages.send(input.chatId, {
-      message: { parts: [{ type: "text", value: input.text }] },
-    });
-
-    return { messageId: response.message.id, chatId: response.chat_id };
+    let sent: SentMessage | null = null;
+    for (const text of chunkMessage(input.text, this.capabilities.maxMessageLength)) {
+      const response = await this.client.chats.messages.send(input.chatId, {
+        message: { parts: [{ type: "text", value: text }] },
+      });
+      sent = { messageId: response.message.id, chatId: response.chat_id };
+    }
+    if (!sent) throw new MessagingError("sendMessage produced no chunks to send");
+    return sent;
   }
 }

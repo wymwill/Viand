@@ -40,16 +40,49 @@ export interface UpdateGroupInput {
   name?: string;
 }
 
-export interface MessagingProvider {
+export interface MessagingCapabilities {
+  readonly maxMessageLength: number;
+  readonly supportsThreads: boolean;
+  readonly supportsReactions: boolean;
+  readonly canCreateChat: boolean;
+}
+
+interface BaseMessagingProvider {
+  readonly capabilities: MessagingCapabilities;
   sendMessage(input: SendMessageInput): Promise<SentMessage>;
-  createChat(input: CreateChatInput): Promise<MessagingChat>;
   updateGroup?(input: UpdateGroupInput): Promise<void>;
 }
+
+export interface ChatCreatingMessagingProvider extends BaseMessagingProvider {
+  readonly capabilities: MessagingCapabilities & { readonly canCreateChat: true };
+  createChat(input: CreateChatInput): Promise<MessagingChat>;
+}
+
+export interface ReplyOnlyMessagingProvider extends BaseMessagingProvider {
+  readonly capabilities: MessagingCapabilities & { readonly canCreateChat: false };
+}
+
+export type MessagingProvider = ChatCreatingMessagingProvider | ReplyOnlyMessagingProvider;
 
 /** Linq caps recipients per chat; enforced before any create call. */
 export const MAX_RECIPIENTS = 31;
 /** A group chat needs at least three total participants (bot + two others). */
 export const MIN_GROUP_PARTICIPANTS = 3;
+
+export function chunkMessage(text: string, limit: number): string[] {
+  if (text.length <= limit) return [text];
+  const chunks: string[] = [];
+  let rest = text;
+  while (rest.length > limit) {
+    const window = rest.slice(0, limit);
+    const newline = window.lastIndexOf("\n");
+    const cut = newline > 0 ? newline : limit;
+    chunks.push(rest.slice(0, cut).trimEnd());
+    rest = rest.slice(cut).trimStart();
+  }
+  if (rest) chunks.push(rest);
+  return chunks;
+}
 
 const URL_PATTERN = /https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|io|app|co)\b/i;
 

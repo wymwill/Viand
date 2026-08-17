@@ -158,8 +158,8 @@ export function parseCommand(raw: string): Command {
  * - `ignore` is everything else. A group chat is full of messages that are not
  *   addressed to the bot, and answering them is the fastest way to get muted.
  */
-export function idleDisposition(command: Command): "activate" | "answer" | "ignore" {
-  if (command.kind === "PICK_A_PLACE") return "activate";
+export function idleDisposition(command: Command, wasInvoked = false): "activate" | "answer" | "ignore" {
   if (command.kind === "HELP" || command.kind === "CANCEL") return "answer";
+  if (command.kind === "PICK_A_PLACE" || wasInvoked) return "activate";
   return "ignore";
 }

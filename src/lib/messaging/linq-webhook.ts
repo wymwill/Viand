@@ -1,5 +1,6 @@
 import type LinqAPIV3 from "@linqapp/sdk";
 import type { InboundMessage } from "../conversation/service";
+import { normalisePlainMention } from "./mention";
 
 /**
  * Converts the SDK's pinned 2026-02-03 event into the small internal message
@@ -15,7 +16,7 @@ export function inboundFromLinq(
   if (received.webhook_version !== "2026-02-03") return null;
   if (received.data.direction !== "inbound") return null;
 
-  const text = received.data.parts
+  const rawText = received.data.parts
     .filter(
       (part): part is LinqAPIV3.SchemasTextPartResponse =>
         part.type === "text",
@@ -24,7 +25,9 @@ export function inboundFromLinq(
     .join("\n")
     .trim();
 
-  if (!text) return null;
+  if (!rawText) return null;
+  const { text, wasInvoked } = normalisePlainMention(rawText);
+  if (!text && !wasInvoked) return null;
 
   return {
     eventId: received.event_id,
@@ -32,5 +35,6 @@ export function inboundFromLinq(
     isGroup: received.data.chat.is_group === true,
     senderHandle: received.data.sender_handle.handle,
     text,
+    wasInvoked,
   };
 }

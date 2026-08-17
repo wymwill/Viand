@@ -99,11 +99,9 @@ describe("TelegramMessagingProvider", () => {
     ).rejects.toThrow(/chat not found/);
   });
 
-  it("refuses to create a chat, which Telegram bots cannot do", async () => {
+  it("declares that it cannot create a chat", () => {
     const provider = new TelegramMessagingProvider(vi.fn() as unknown as typeof fetch);
-
-    await expect(
-      provider.createChat({ to: ["+15555550100"], text: "hi" }),
-    ).rejects.toBeInstanceOf(MessagingError);
+    expect(provider.capabilities.canCreateChat).toBe(false);
+    expect("createChat" in provider).toBe(false);
   });
 });

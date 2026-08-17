@@ -39,6 +39,7 @@ describe("inboundFromTelegram", () => {
       isGroup: true,
       senderHandle: "tg:555",
       text: "pick a place",
+      wasInvoked: false,
     });
   });
 
