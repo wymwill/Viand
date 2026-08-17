@@ -23,6 +23,13 @@ import { parseSharedLocation, snapToGrid } from "./geo";
 interface CacheEntry {
   result: RestaurantSearchResult;
   storedAt: number;
+  /**
+   * Hour the result's `openNow` values were computed in. Freshness is gated on
+   * this, but lookup is not: a stale entry from an earlier hour must still be
+   * findable, because serving slightly wrong hours during an upstream outage
+   * beats telling the group there is nowhere to eat.
+   */
+  hourBucket: string;
 }
 
 export interface CacheOptions {
@@ -65,9 +72,10 @@ export class CachedRestaurantProvider implements RestaurantProvider {
 
   async search(input: RestaurantSearchInput): Promise<RestaurantSearchResult> {
     const key = cacheKey(input);
+    const bucket = hourBucket(input);
     const cached = this.entries.get(key);
 
-    if (cached && this.now() - cached.storedAt < this.ttlMs) {
+    if (cached && cached.hourBucket === bucket && this.now() - cached.storedAt < this.ttlMs) {
       return cached.result;
     }
 
@@ -79,7 +87,7 @@ export class CachedRestaurantProvider implements RestaurantProvider {
         const result = await this.inner.search(input);
         // An empty result is not worth caching: it is usually a bad location or a
         // half-answered query, and caching it would pin that failure in place.
-        if (result.restaurants.length > 0) this.store(key, result);
+        if (result.restaurants.length > 0) this.store(key, result, bucket);
         return result;
       } catch (error) {
         if (cached) {
@@ -98,15 +106,30 @@ export class CachedRestaurantProvider implements RestaurantProvider {
     }
   }
 
-  private store(key: string, result: RestaurantSearchResult): void {
+  private store(key: string, result: RestaurantSearchResult, hourBucket: string): void {
     // Oldest-first eviction; insertion order is what Map iteration gives us.
     if (this.entries.size >= this.maxEntries) {
       const oldest = this.entries.keys().next().value;
       if (oldest !== undefined) this.entries.delete(oldest);
     }
     this.entries.delete(key);
-    this.entries.set(key, { result, storedAt: this.now() });
+    this.entries.set(key, { result, storedAt: this.now(), hourBucket });
   }
+}
+
+/**
+ * Cached results carry an `openNow` computed at fetch time, so a result is
+ * only *fresh* within the hour it was computed in. Without that a lunchtime
+ * search — dinner-only restaurants already filtered out — was served back at
+ * eight in the evening for up to the full seven day TTL.
+ *
+ * This deliberately does not go in the cache key. The key stays time free so
+ * an older entry remains findable for the stale-on-failure path; the bucket is
+ * compared on the entry instead, so an outage still degrades to slightly wrong
+ * hours rather than to no options at all.
+ */
+export function hourBucket(input: RestaurantSearchInput): string {
+  return String(Math.floor(input.now.getTime() / (60 * 60 * 1000)));
 }
 
 export function cacheKey(input: RestaurantSearchInput): string {
@@ -119,5 +142,6 @@ export function cacheKey(input: RestaurantSearchInput): string {
     input.radiusMiles,
     input.maxPriceLevel ?? "",
     input.openNowOnly ? "open" : "",
+    input.timeZone ?? "",
   ].join("|");
 }

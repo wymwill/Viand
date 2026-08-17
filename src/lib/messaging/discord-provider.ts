@@ -29,8 +29,12 @@ export class DiscordMessagingProvider implements ReplyOnlyMessagingProvider {
 
   constructor(interactionToken?: string, fetchImpl: typeof fetch = fetch) {
     const env = getEnv();
-    if (!env.DISCORD_APPLICATION_ID || !env.DISCORD_BOT_TOKEN) {
-      throw new MessagingError("DiscordMessagingProvider requires DISCORD_APPLICATION_ID and DISCORD_BOT_TOKEN.");
+    // Only the application id is needed to answer an interaction: the followup
+    // webhook is authenticated by the per interaction token, not by the bot
+    // token. Demanding a bot token here made replies fail on a configuration
+    // that Discord itself considers complete.
+    if (!env.DISCORD_APPLICATION_ID) {
+      throw new MessagingError("DiscordMessagingProvider requires DISCORD_APPLICATION_ID.");
     }
     this.applicationId = env.DISCORD_APPLICATION_ID;
     this.interactionToken = interactionToken;

@@ -50,14 +50,20 @@ export async function POST(request: Request) {
   // over the followup webhook. Doing the work before responding would time the
   // interaction out on exactly the searches that matter most.
   after(async () => {
-    const provider = new DiscordMessagingProvider(token);
+    // Constructed inside the try: a throw here used to escape the handler
+    // below, leaving the deferred "thinking…" placeholder to sit forever with
+    // no way to edit it.
+    let provider: DiscordMessagingProvider | null = null;
     try {
+      provider = new DiscordMessagingProvider(token);
       await processMessageWithProvider(inbound, provider);
     } catch (error) {
       console.warn("[viand] discord interaction failed after deferral:", error);
       // The placeholder would otherwise sit as "thinking…" forever; the group
-      // is told the attempt failed rather than left waiting on nothing.
-      await provider.sendMessage({ chatId: inbound.linqChatId, text: copy.REQUEST_FAILED })
+      // is told the attempt failed rather than left waiting on nothing. If the
+      // provider itself could not be built there is nothing to answer with.
+      await (provider ?? new DiscordMessagingProvider(token))
+        .sendMessage({ chatId: inbound.linqChatId, text: copy.REQUEST_FAILED })
         .catch((sendError: unknown) =>
           console.warn("[viand] discord failure notice could not be delivered:", sendError),
         );

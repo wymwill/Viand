@@ -172,3 +172,41 @@ describe("CachedRestaurantProvider", () => {
     expect(state.calls).toBe(before + 1);
   });
 });
+
+describe("time sensitivity of cached hours", () => {
+  const HOUR = 60 * 60 * 1000;
+  const base = new Date("2026-08-17T12:00:00Z");
+  const search = (now: Date) => ({ locationText: "Berkeley", radiusMiles: 5, now });
+
+  it("refetches once the hour changes, because openNow was computed then", () => {
+    const { provider: inner, state } = source();
+    const cache = new CachedRestaurantProvider(inner, { now: () => base.getTime() });
+
+    return (async () => {
+      await cache.search(search(base));
+      await cache.search(search(new Date(base.getTime() + 5 * 60 * 1000)));
+      expect(state.calls).toBe(1); // same hour, still fresh
+
+      await cache.search(search(new Date(base.getTime() + HOUR)));
+      // A lunchtime result must not be served back at dinner with its
+      // dinner-only restaurants already filtered out.
+      expect(state.calls).toBe(2);
+    })();
+  });
+
+  it("still serves a previous hour's result when upstream fails", async () => {
+    const { provider: inner, state } = source();
+    const cache = new CachedRestaurantProvider(inner, {
+      now: () => base.getTime(),
+      onStale: () => {},
+    });
+
+    await cache.search(search(base));
+    state.fail = true;
+
+    // The entry is an hour old and therefore not fresh, but an outage must
+    // degrade to slightly stale hours rather than to no options at all.
+    const result = await cache.search(search(new Date(base.getTime() + HOUR)));
+    expect(result.restaurants.length).toBeGreaterThan(0);
+  });
+});

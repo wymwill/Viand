@@ -165,7 +165,7 @@ export class OsmRestaurantProvider implements RestaurantProvider {
 
     const restaurants: Restaurant[] = [];
     for (const element of elements) {
-      const restaurant = this.normalise(element, center, input.now);
+      const restaurant = this.normalise(element, center, input.now, input.timeZone);
       if (!restaurant) continue;
       if (restaurant.distanceMiles > input.radiusMiles) continue;
       if (
@@ -343,7 +343,12 @@ export class OsmRestaurantProvider implements RestaurantProvider {
     }
   }
 
-  private normalise(element: OverpassElement, center: LatLng, now: Date): Restaurant | null {
+  private normalise(
+    element: OverpassElement,
+    center: LatLng,
+    now: Date,
+    timeZone: string | null | undefined,
+  ): Restaurant | null {
     const tags = element.tags ?? {};
     const name = tags.name?.trim();
     const position = coordinatesOf(element);
@@ -352,7 +357,7 @@ export class OsmRestaurantProvider implements RestaurantProvider {
     // The group asked for somewhere to eat, not the nearest McDonald's.
     if (isNameBrandChain(tags)) return null;
 
-    const openStatus = evaluateOpeningHours(tags.opening_hours, now);
+    const openStatus = evaluateOpeningHours(tags.opening_hours, now, timeZone);
 
     return {
       id: `${element.type ?? "node"}/${element.id}`,

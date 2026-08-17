@@ -69,14 +69,62 @@ function parseTimes(raw: string): TimeRange[] | "closed" | null {
   return ranges.length > 0 ? ranges : null;
 }
 
-/** Evaluates supported hours against the explicitly supplied wall clock. */
+const IANA_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+/**
+ * The instant, as wall-clock time where the restaurant actually is.
+ *
+ * `opening_hours` describes the establishment's local time, so reading the
+ * host's clock is wrong whenever the two differ — and on a serverless host the
+ * process runs in UTC, which means it is wrong for every restaurant outside
+ * that offset. Returning null when the zone is unknown is deliberate: the
+ * caller degrades to "unverified" rather than declaring a guess.
+ */
+function localWallClock(now: Date, timeZone: string): { weekday: number; minutes: number } | null {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(now);
+
+    const lookup = (type: string) => parts.find((part) => part.type === type)?.value;
+    const weekdayName = lookup("weekday");
+    const hour = Number(lookup("hour"));
+    const minute = Number(lookup("minute"));
+    if (weekdayName == null || !Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+
+    const sundayIndex = IANA_DAYS.indexOf(weekdayName as (typeof IANA_DAYS)[number]);
+    if (sundayIndex < 0) return null;
+
+    // The weekly representation starts Monday; Intl reports Sunday first.
+    return { weekday: (sundayIndex + 6) % 7, minutes: (hour % 24) * 60 + minute };
+  } catch {
+    // An unrecognised IANA zone throws rather than silently misreporting.
+    return null;
+  }
+}
+
+/**
+ * Evaluates supported hours against the supplied instant, read in the
+ * restaurant's own time zone. Without a zone the answer is "unverified": a
+ * closed verdict computed in the wrong offset would eliminate restaurants that
+ * are open, which is worse than admitting the hours are unknown.
+ */
 export function evaluateOpeningHours(
   raw: string | null | undefined,
   now: Date,
+  timeZone: string | null | undefined,
 ): OpenStatus {
   const value = raw?.replace(/\s/g, "");
   if (!value) return "unverified";
+  if (!timeZone) return "unverified";
   if (value === "24/7") return "open";
+
+  const local = localWallClock(now, timeZone);
+  if (!local) return "unverified";
 
   const specs: DaySpec[] = Array.from({ length: DAYS.length });
   for (const rule of value.split(";")) {
@@ -90,12 +138,20 @@ export function evaluateOpeningHours(
     const days = parseDays(match[1] ?? "");
     const times = parseTimes(timesPart);
     if (!days || !times) return "unverified";
-    for (const day of days) specs[day] = times;
+    for (const day of days) {
+      const existing = specs[day];
+      // Split service is the norm, not an edge case: "Mo-Fr 11:00-14:00;
+      // Mo-Fr 17:00-22:00" is one restaurant with lunch and dinner, and
+      // overwriting here dropped lunch entirely. A later explicit off/closed
+      // still wins, because that is the author stating an exception.
+      specs[day] =
+        times === "closed" || existing == null || existing === "closed"
+          ? times
+          : [...existing, ...times];
+    }
   }
 
-  // JavaScript numbers Sunday as zero; the weekly representation starts Monday.
-  const weekday = (now.getDay() + 6) % 7;
-  const point = weekday * DAY_MINUTES + now.getHours() * 60 + now.getMinutes();
+  const point = local.weekday * DAY_MINUTES + local.minutes;
 
   for (let day = 0; day < specs.length; day += 1) {
     const spec = specs[day];

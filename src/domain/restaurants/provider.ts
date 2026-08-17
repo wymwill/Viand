@@ -46,6 +46,13 @@ export interface RestaurantSearchInput {
    * domain code must never read it from an ambient clock.
    */
   now: Date;
+  /**
+   * IANA zone the searched area sits in, supplied by the adapter layer with
+   * `now`. `opening_hours` is written in the restaurant's local wall time, so
+   * without this a provider cannot tell open from closed and must report the
+   * hours unverified rather than guess in the host's offset.
+   */
+  timeZone?: string | null;
   /** Cuisines any member asked for; a hint for ranking, never a filter. */
   cuisineHints?: Cuisine[];
   maxPriceLevel?: PriceLevel | null;

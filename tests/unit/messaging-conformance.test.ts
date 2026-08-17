@@ -95,3 +95,25 @@ describe("discord slash command inbound", () => {
     expect(interaction(["mexican under $25"])?.text).toBe("mexican under $25");
   });
 });
+
+describe("plain mention normalisation", () => {
+  it("recognises a standalone mention", () => {
+    expect(normalisePlainMention("@Viand pick a place")).toEqual({
+      text: "pick a place",
+      wasInvoked: true,
+    });
+  });
+
+  /**
+   * A word-boundary match also fired inside an email address, which both
+   * mangled the address and set wasInvoked, so an ordinary message could start
+   * a decision session nobody asked for.
+   */
+  it.each([
+    "ping person@viand.com about lunch",
+    "email me at bob@viand.io",
+    "see support@viand.co.uk",
+  ])("leaves %j untouched and uninvoked", (text) => {
+    expect(normalisePlainMention(text)).toEqual({ text, wasInvoked: false });
+  });
+});
