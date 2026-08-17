@@ -1,6 +1,6 @@
-import Anthropic from "@anthropic-ai/sdk";
 import type { Restaurant } from "@/domain/restaurants/provider";
 import type { EvalGroup } from "../generate";
+import { type ModelClient, resolveModelClient } from "./model-client";
 
 /**
  * Strategy (b): a single unstructured prompt.
@@ -12,27 +12,28 @@ import type { EvalGroup } from "../generate";
  * categorically different from a preference. Whether that matters is the
  * question the harness answers.
  *
- * Requires ANTHROPIC_API_KEY. Without one the runner skips it entirely and the
- * report says so, so `npm run eval` is useful with no credentials at all.
+ * Requires GEMINI_API_KEY or ANTHROPIC_API_KEY. Without either, the runner
+ * skips it entirely and the report says so, so `npm run eval` is useful with no
+ * credentials at all. Which provider answered is recorded in the report label,
+ * because a fairness number is not comparable across models.
  */
 
-export const MODEL_STRATEGY_ENV_KEY = "ANTHROPIC_API_KEY";
-
 export interface ModelStrategyOptions {
-  model: string;
   timeoutMs: number;
   /** How many groups may be in flight at once. */
   concurrency: number;
 }
 
 export const DEFAULT_MODEL_OPTIONS: ModelStrategyOptions = {
-  model: "claude-haiku-4-5",
   timeoutMs: 20_000,
-  concurrency: 4,
+  // Low enough to stay inside a free-tier per-minute quota. The harness is not
+  // latency-sensitive, and a run that finishes slowly beats one whose rejected
+  // calls quietly bias the result.
+  concurrency: 2,
 };
 
 export function modelStrategyAvailable(): boolean {
-  return Boolean(process.env[MODEL_STRATEGY_ENV_KEY]);
+  return resolveModelClient() != null;
 }
 
 const SYSTEM_PROMPT = [
@@ -41,15 +42,6 @@ const SYSTEM_PROMPT = [
   "Choose the single best restaurant for the group based on what they said.",
   "Return its number in the required structured response.",
 ].join("\n");
-
-const CHOICE_JSON_SCHEMA = {
-  type: "object",
-  properties: {
-    restaurantIndex: { type: "integer" },
-  },
-  required: ["restaurantIndex"],
-  additionalProperties: false,
-} as const;
 
 function buildPrompt(group: EvalGroup, catalogue: readonly Restaurant[]): string {
   const lines: string[] = ["What each person said:", ""];
@@ -64,10 +56,11 @@ function buildPrompt(group: EvalGroup, catalogue: readonly Restaurant[]): string
       restaurant.accommodates.length > 0
         ? `, accommodates ${restaurant.accommodates.join("/")}`
         : "";
-    const rating = restaurant.rating > 0 ? `, rated ${restaurant.rating}` : "";
+    const rating = restaurant.rating != null ? `, rated ${restaurant.rating}` : "";
+    const price = restaurant.priceLevel == null ? "price unknown" : "$".repeat(restaurant.priceLevel);
     lines.push(
       `${index + 1}. ${restaurant.name} — ${restaurant.cuisine}, ` +
-        `${"$".repeat(restaurant.priceLevel)}, ${restaurant.distanceMiles} mi${rating}${diets}`,
+        `${price}, ${restaurant.distanceMiles} mi${rating}${diets}`,
     );
   });
 
@@ -90,40 +83,42 @@ function parseChoice(text: string, max: number): number | null {
   return index - 1;
 }
 
+type ChoiceOutcome =
+  | { kind: "chosen"; restaurant: Restaurant }
+  | { kind: "abstained" }
+  | { kind: "unavailable" };
+
 async function chooseOne(
-  client: Anthropic,
+  client: ModelClient,
   options: ModelStrategyOptions,
   group: EvalGroup,
   catalogue: readonly Restaurant[],
-): Promise<Restaurant | null> {
-  const response = await client.messages.create(
-    {
-      model: options.model,
-      max_tokens: 64,
-      temperature: 0,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: buildPrompt(group, catalogue) }],
-      output_config: {
-        format: {
-          type: "json_schema",
-          schema: CHOICE_JSON_SCHEMA,
-        },
-      },
-    },
-    { timeout: options.timeoutMs, maxRetries: 0 },
+): Promise<ChoiceOutcome> {
+  const result = await client.complete(
+    SYSTEM_PROMPT,
+    buildPrompt(group, catalogue),
+    options.timeoutMs,
   );
+  if (result.kind === "unavailable") return { kind: "unavailable" };
+  if (result.kind === "abstained") return { kind: "abstained" };
 
-  if (response.stop_reason === "max_tokens") return null;
-  const block = response.content.find((entry) => entry.type === "text");
-  if (!block) return null;
-
-  const index = parseChoice(block.text, catalogue.length);
-  return index == null ? null : (catalogue[index] ?? null);
+  const index = parseChoice(result.text, catalogue.length);
+  if (index == null) return { kind: "abstained" };
+  const restaurant = catalogue[index];
+  return restaurant ? { kind: "chosen", restaurant } : { kind: "abstained" };
 }
 
 export interface ModelRunResult {
   choices: Array<Restaurant | null>;
+  /** Calls the model answered unusably — its own doing, and a real result. */
   errors: number;
+  /**
+   * Calls the transport never delivered — quota, 5xx, timeout. Not the model's
+   * doing, and not a result. Any non-zero value makes the run unpublishable.
+   */
+  unavailable: number;
+  /** Which provider and model produced these choices, for the report. */
+  label: string;
 }
 
 /**
@@ -136,10 +131,15 @@ export async function runModelStrategy(
   groups: readonly EvalGroup[],
   catalogue: readonly Restaurant[],
   options: ModelStrategyOptions = DEFAULT_MODEL_OPTIONS,
-  client: Anthropic = new Anthropic({ apiKey: process.env[MODEL_STRATEGY_ENV_KEY] as string }),
+  client: ModelClient | null = resolveModelClient(),
 ): Promise<ModelRunResult> {
+  if (!client) throw new Error("runModelStrategy needs a credential; check modelStrategyAvailable");
+  // Bound to a const so the narrowing survives into the worker closure.
+  const resolved = client;
+
   const choices: Array<Restaurant | null> = new Array(groups.length).fill(null);
   let errors = 0;
+  let unavailable = 0;
   let cursor = 0;
 
   async function worker(): Promise<void> {
@@ -152,10 +152,13 @@ export async function runModelStrategy(
       if (!group) return;
 
       try {
-        choices[index] = await chooseOne(client, options, group, catalogue);
-        if (choices[index] == null) errors += 1;
+        const outcome = await chooseOne(resolved, options, group, catalogue);
+        choices[index] = outcome.kind === "chosen" ? outcome.restaurant : null;
+        if (outcome.kind === "abstained") errors += 1;
+        if (outcome.kind === "unavailable") unavailable += 1;
       } catch {
-        errors += 1;
+        // A throw escaping a client is itself a transport failure, not an answer.
+        unavailable += 1;
         choices[index] = null;
       }
     }
@@ -165,5 +168,5 @@ export async function runModelStrategy(
   const workers = Array.from({ length: workerCount }, worker);
   await Promise.all(workers);
 
-  return { choices, errors };
+  return { choices, errors, unavailable, label: resolved.label };
 }

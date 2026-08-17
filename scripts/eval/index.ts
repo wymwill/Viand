@@ -7,7 +7,12 @@ import { Rng, digest } from "./rng";
 import { evaluateChoice, summarise, type GroupOutcome, type StrategySummary } from "./satisfaction";
 import { averageStrategy } from "./strategies/average";
 import { deterministicStrategy } from "./strategies/deterministic";
-import { modelStrategyAvailable, runModelStrategy } from "./strategies/model";
+import {
+  DEFAULT_MODEL_OPTIONS,
+  modelStrategyAvailable,
+  runModelStrategy,
+} from "./strategies/model";
+import { resolveModelClient } from "./strategies/model-client";
 
 /**
  * `npm run eval`
@@ -21,6 +26,8 @@ import { modelStrategyAvailable, runModelStrategy } from "./strategies/model";
  *   --catalogue=NAME    synthetic | mock (default synthetic)
  *   --catalogue-size=N  synthetic catalogue size (default 60)
  *   --strategies=a,b,c  which to run (default all available)
+ *   --concurrency=N     model calls in flight for (b) (default 2)
+ *   --model=NAME        model for (b); provider follows the credential present
  *   --json              emit JSON instead of the markdown table
  */
 
@@ -34,6 +41,10 @@ interface Options {
   catalogue: "synthetic" | "mock";
   catalogueSize: number;
   strategies: Set<string>;
+  /** Model calls in flight. Lower it to fit inside a tight provider quota. */
+  concurrency: number;
+  /** Overrides the provider's default model. Free-tier quota is per model. */
+  model: string | undefined;
   json: boolean;
 }
 
@@ -44,6 +55,8 @@ function parseArgs(argv: readonly string[]): Options {
     catalogue: "synthetic",
     catalogueSize: DEFAULT_CATALOGUE_SIZE,
     strategies: new Set(["a", "b", "c"]),
+    concurrency: DEFAULT_MODEL_OPTIONS.concurrency,
+    model: undefined,
     json: false,
   };
 
@@ -66,6 +79,12 @@ function parseArgs(argv: readonly string[]): Options {
         break;
       case "--strategies":
         options.strategies = new Set(value.split(",").map((entry) => entry.trim().toLowerCase()));
+        break;
+      case "--concurrency":
+        options.concurrency = Math.max(1, Number(value) || DEFAULT_MODEL_OPTIONS.concurrency);
+        break;
+      case "--model":
+        options.model = value || undefined;
         break;
       case "--json":
         options.json = true;
@@ -138,11 +157,27 @@ async function main(): Promise<void> {
 
   if (options.strategies.has("b")) {
     if (modelStrategyAvailable()) {
-      const { choices, errors } = await runModelStrategy(groups, catalogue);
+      const { choices, errors, unavailable, label } = await runModelStrategy(
+        groups,
+        catalogue,
+        { ...DEFAULT_MODEL_OPTIONS, concurrency: options.concurrency },
+        resolveModelClient(options.model),
+      );
       const outcomes = groups.map((group, index) => evaluateChoice(group, choices[index] ?? null));
-      summaries.push(summarise("(b) unstructured model", outcomes, errors));
+      // The model is named in the label: a fairness score is not comparable
+      // across models, so an unattributed row would be unreadable later.
+      summaries.push(summarise(`(b) unstructured model [${label}]`, outcomes, errors));
+      if (unavailable > 0) {
+        // Distinct from an abstention on purpose. These groups were never put
+        // to the model, so the row understates it by an unknown amount and
+        // must not be published as a measurement of it.
+        skipped.push(
+          `(b) NOT PUBLISHABLE — ${unavailable} of ${groups.length} call(s) never reached ` +
+            `${label} (quota, 5xx, or timeout). Re-run with quota before quoting this row.`,
+        );
+      }
     } else {
-      skipped.push("(b) unstructured model — no ANTHROPIC_API_KEY set");
+      skipped.push("(b) unstructured model — no GEMINI_API_KEY or ANTHROPIC_API_KEY set");
     }
   }
 
