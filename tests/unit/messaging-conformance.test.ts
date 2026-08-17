@@ -7,7 +7,8 @@ import { chunkForTelegram, TELEGRAM_MAX_MESSAGE_CHARS } from "@/lib/messaging/te
 import { chunkForDiscord, DISCORD_MAX_MESSAGE_CHARS } from "@/lib/messaging/discord-provider";
 import { normalisePlainMention } from "@/lib/messaging/mention";
 import { normaliseTelegramMessage } from "@/lib/messaging/telegram-webhook";
-import { normaliseDiscordText } from "@/lib/messaging/discord-webhook";
+import { inboundFromDiscord, normaliseDiscordText } from "@/lib/messaging/discord-webhook";
+import { parseCommand } from "@/domain/commands";
 import { constantTimeEqual, verifyDiscordSignature } from "@/lib/messaging/verify-signature";
 import { InMemorySessionStore } from "@/lib/store/memory-store";
 import { MockRestaurantProvider } from "@/domain/restaurants/mock-provider";
@@ -49,5 +50,48 @@ describe("messaging adapter conformance", () => {
     const signature = sign(null, Buffer.from(timestamp + rawBody), privateKey).toString("hex");
     expect(verifyDiscordSignature({ publicKeyHex: rawKey.toString("hex"), signatureHex: signature, timestamp, rawBody })).toBe(true);
     expect(verifyDiscordSignature({ publicKeyHex: rawKey.toString("hex"), signatureHex: signature, timestamp, rawBody: "tampered" })).toBe(false);
+  });
+});
+
+describe("discord slash command inbound", () => {
+  function interaction(options: string[] = []) {
+    return inboundFromDiscord({
+      id: "i1",
+      type: 2,
+      token: "t",
+      guild_id: "g1",
+      channel_id: "c1",
+      member: { user: { id: "u1" } },
+      data: { name: "eat", options: options.map((value) => ({ name: "message", value })) },
+    });
+  }
+
+  /**
+   * The slash command name is transport syntax, not content. Leaving it in the
+   * text made every deterministic command degrade to FREEFORM on Discord —
+   * "/eat 2" parsed as prose rather than a vote — which breaks voting, vetoes,
+   * DONE and CANCEL, and pushes compliance keywords at a model that must never
+   * see them.
+   */
+  it.each([
+    ["2", { kind: "VOTE", option: 2 }],
+    ["done", { kind: "DONE" }],
+    ["cancel", { kind: "CANCEL" }],
+    ["help", { kind: "HELP" }],
+    ["veto 3", { kind: "VETO", option: 3 }],
+  ])("parses /eat %s as the deterministic command, not prose", (argument, expected) => {
+    const inbound = interaction([argument]);
+    expect(inbound).not.toBeNull();
+    expect(parseCommand(inbound!.text)).toEqual(expected);
+  });
+
+  it("treats a bare /eat as an explicit invocation with no content", () => {
+    const inbound = interaction();
+    expect(inbound?.text).toBe("");
+    expect(inbound?.wasInvoked).toBe(true);
+  });
+
+  it("keeps preference prose intact", () => {
+    expect(interaction(["mexican under $25"])?.text).toBe("mexican under $25");
   });
 });
