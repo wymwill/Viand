@@ -39,7 +39,16 @@ const DEFAULT_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 const MAX_OVERPASS_RADIUS_METRES = 10_000;
 const TIER_1_RADIUS_METRES = 1_500;
 const MIN_RESULTS_BEFORE_ESCALATING = 12;
-const MAX_OVERPASS_RESULTS = 40;
+/**
+ * Ceiling on elements fetched per query.
+ *
+ * At 40 this was the binding limit rather than the radius: Boston returned an
+ * identical 35 results at one, two, and five miles, because the cap truncated
+ * every one of them. Only five options are ever presented, but the scorer can
+ * only choose among what it is given, and a group with a dietary requirement
+ * needs a wide candidate pool to have anything survive elimination.
+ */
+const MAX_OVERPASS_RESULTS = 150;
 
 /**
  * Query progressively to limit load on volunteer-run Overpass mirrors. A cheap
@@ -260,17 +269,26 @@ export class OsmRestaurantProvider implements RestaurantProvider {
     // actually bounds the wait.
     const serverTimeoutSeconds = OVERPASS_SERVER_TIMEOUT_SECONDS;
 
-    // Three exact tag matches rather than one regex: a regex on a tag value
-    // defeats Overpass's index and forces a scan. Nodes only — restaurants
-    // mapped as building outlines cost roughly double to fetch (every polygon
-    // needs a centroid computed) for a small minority of extra results.
+    // Exact tag matches rather than one regex: a regex on a tag value defeats
+    // Overpass's index and forces a scan.
+    //
+    // `nwr` rather than `node`, because in older, denser cities a large share
+    // of restaurants are mapped as building outlines rather than points —
+    // Boston's North End returned none of its landmark Italian restaurants
+    // while this queried nodes alone. Polygons cost a centroid each, which
+    // `out center` already computes, and the tiered radius keeps that bounded.
     const around = `(around:${radius},${center.latitude},${center.longitude})`;
     const query = [
       `[out:json][timeout:${serverTimeoutSeconds}];`,
       "(",
-      `  node["amenity"="restaurant"]["name"]${around};`,
-      `  node["amenity"="fast_food"]["name"]${around};`,
-      `  node["amenity"="cafe"]["name"]${around};`,
+      `  nwr["amenity"="restaurant"]["name"]${around};`,
+      `  nwr["amenity"="fast_food"]["name"]${around};`,
+      `  nwr["amenity"="cafe"]["name"]${around};`,
+      `  nwr["amenity"="food_court"]["name"]${around};`,
+      // Bars and pubs serve food and a group deciding where to eat routinely
+      // lands on one; they were absent entirely.
+      `  nwr["amenity"="bar"]["food"="yes"]["name"]${around};`,
+      `  nwr["amenity"="pub"]["name"]${around};`,
       ");",
       `out center tags ${MAX_OVERPASS_RESULTS};`,
     ].join("\n");

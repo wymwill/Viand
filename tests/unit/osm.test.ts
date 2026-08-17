@@ -281,14 +281,17 @@ describe("Overpass query cost", () => {
     expect(Number(around?.[1])).toBeLessThan(1000);
   });
 
-  it("queries nodes only, with exact tag matches rather than a regex", async () => {
+  it("covers polygons and eating places beyond restaurants, without a regex", async () => {
     await provider([node()]).search(search);
-    // Building outlines roughly double the cost for a small minority of results.
-    expect(lastQuery).not.toContain("way[");
-    // A regex on a tag value defeats Overpass's index.
+    // A regex on a tag value defeats Overpass's index and forces a scan; that
+    // constraint still holds even though the element types widened.
     expect(lastQuery).not.toContain("~");
-    expect(lastQuery).toContain('node["amenity"="restaurant"]');
-    expect(lastQuery).toContain('node["amenity"="cafe"]');
+    // Nodes alone missed every restaurant mapped as a building outline, which
+    // in older cities is most of them.
+    expect(lastQuery).toContain('nwr["amenity"="restaurant"]');
+    expect(lastQuery).toContain('nwr["amenity"="cafe"]');
+    expect(lastQuery).toContain('nwr["amenity"="pub"]');
+    expect(lastQuery).not.toContain('node["amenity"');
   });
 
   it("gives Overpass generous time regardless of our own budget", async () => {

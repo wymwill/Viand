@@ -62,6 +62,37 @@ const CUISINE_BY_OSM_VALUE: Readonly<Record<string, Cuisine>> = {
   salad: "salad",
 };
 
+/**
+ * Words in a restaurant's own name that state its cuisine.
+ *
+ * Most restaurants in OpenStreetMap carry no `cuisine` tag at all — in a
+ * central Boston sample, ten of thirty-five, including every landmark Italian
+ * restaurant in the North End. Their names say so plainly: "Ristorante
+ * Saraceno", "Terramia Ristorante", "Union Oyster House".
+ *
+ * This is a last resort, consulted only when the tag is absent, and it is
+ * deliberately limited to words that name a cuisine outright rather than
+ * merely suggest one. It is also why this stays out of the dietary path: a
+ * wrong cuisine costs a ranking place, while a wrong dietary claim is a person
+ * served food they cannot eat, and no name is evidence of that.
+ */
+const CUISINE_BY_NAME_WORD: ReadonlyArray<readonly [RegExp, Cuisine]> = [
+  [/\b(ristorante|trattoria|osteria|enoteca)\b/i, "italian"],
+  [/\b(pizzeria|pizzaria)\b/i, "pizza"],
+  [/\b(taqueria|cantina|birrieria)\b/i, "mexican"],
+  [/\b(sushi|izakaya|teriyaki)\b/i, "japanese"],
+  [/\b(ramen|noodle house)\b/i, "ramen"],
+  [/\b(pho|banh mi)\b/i, "vietnamese"],
+  [/\b(oyster|seafood|fish house|clam|lobster)\b/i, "seafood"],
+  [/\b(delicatessen|delis?)\b/i, "deli"],
+  [/\b(taverna|souvlaki|gyro)\b/i, "greek"],
+  [/\b(shawarma|falafel|kebab|kabob)\b/i, "middle_eastern"],
+  [/\b(bbq|barbecue|barbeque|smokehouse)\b/i, "bbq"],
+  [/\b(creperie|brasserie|bistro)\b/i, "french"],
+  [/\b(cafe|caffe|coffee|espresso|roasters)\b/i, "cafe"],
+  [/\b(curry|tandoor|masala)\b/i, "indian"],
+];
+
 export function cuisineFromOsmTags(tags: Readonly<Record<string, string>>): Cuisine {
   for (const value of (tags.cuisine ?? "").split(";")) {
     const mapped = CUISINE_BY_OSM_VALUE[value.trim().toLowerCase()];
@@ -70,6 +101,11 @@ export function cuisineFromOsmTags(tags: Readonly<Record<string, string>>): Cuis
 
   // `amenity=cafe` is a direct statement of the category, not an inference.
   if (tags.amenity === "cafe") return "cafe";
+
+  const name = tags.name ?? "";
+  for (const [pattern, cuisine] of CUISINE_BY_NAME_WORD) {
+    if (pattern.test(name)) return cuisine;
+  }
 
   return UNKNOWN_CUISINE;
 }
@@ -95,15 +131,37 @@ const DIET_TAGS: ReadonlyArray<readonly [string, DietaryRequirement]> = [
 
 const AFFIRMATIVE = new Set(["yes", "only"]);
 
+/**
+ * Older spellings still widely present in OpenStreetMap data. These predate
+ * the `diet:*` scheme and were simply invisible before, which cost real
+ * coverage in exactly the cases that matter most.
+ */
+const LEGACY_DIET_TAGS: ReadonlyArray<readonly [string, DietaryRequirement]> = [
+  ["vegetarian", "vegetarian"],
+  ["vegan", "vegan"],
+];
+
 export function accommodatesFromOsmTags(
   tags: Readonly<Record<string, string>>,
 ): DietaryRequirement[] {
   const accommodates = new Set<DietaryRequirement>();
 
-  for (const [tag, requirement] of DIET_TAGS) {
+  for (const [tag, requirement] of [...DIET_TAGS, ...LEGACY_DIET_TAGS]) {
     if (AFFIRMATIVE.has((tags[tag] ?? "").trim().toLowerCase())) {
       accommodates.add(requirement);
     }
+  }
+
+  // `cuisine=vegan` states what the restaurant serves; it is not the forbidden
+  // step of inferring a diet from a cuisine ("Indian, so probably vegetarian").
+  // A restaurant whose cuisine *is* vegan accommodates vegans by definition.
+  const cuisines = (tags.cuisine ?? "").toLowerCase().split(";").map((value) => value.trim());
+  if (cuisines.includes("vegan")) accommodates.add("vegan");
+  if (cuisines.includes("vegetarian")) accommodates.add("vegetarian");
+
+  // `diet:meat=no` is a statement that no meat is served.
+  if ((tags["diet:meat"] ?? "").trim().toLowerCase() === "no") {
+    accommodates.add("vegetarian");
   }
 
   // Vegan food is vegetarian food, so a vegan claim implies the weaker one.
