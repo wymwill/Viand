@@ -32,6 +32,10 @@ no model, enforced by a test.
 Runs on Next.js 16, React 19, TypeScript (strict) and Vitest, over iMessage
 (via Linq) or Telegram.
 
+[**ARCHITECTURE.md**](ARCHITECTURE.md) covers the pure-domain/adapter split, the
+two invariants above as they appear in the type system, and why this is a state
+machine rather than an LLM agent.
+
 ## Run locally
 
 ```sh
@@ -79,8 +83,18 @@ OSM carries useful `diet:*` tags, so halal, kosher, gluten-free, vegetarian, and
 vegan requests can be checked without inferring dietary support from cuisine.
 Only `yes` and `only` count; `limited` is rejected because a hard restriction
 must not be satisfied by “a couple of things on the menu”. OSM does not provide
-dependable ratings or prices, and its `opening_hours` grammar is not currently
-parsed.
+dependable ratings or prices; a listing missing either is treated as unknown and
+falls back to a completeness proxy, never scored as though it rated badly.
+
+`opening_hours` is parsed against a deliberate subset of the OSM grammar —
+weekday ranges, multiple time spans, `off`/`closed`, and `24/7`. A restaurant
+confirmed closed at the time of the search is **eliminated before ranking**,
+like any other hard constraint, so no rating or proximity can promote it back.
+Anything the subset cannot parse — holidays, calendar ranges, sun-relative
+times — is reported as *unverified* rather than guessed at, and the group is
+told to call ahead. Unverified is not closed: dropping those listings would
+empty the list across most of OpenStreetMap, where `opening_hours` is often
+absent.
 
 The configured Overpass endpoints share one deadline and the first valid
 response wins, so a hanging instance cannot block failover.
@@ -108,12 +122,13 @@ public endpoints.
 
 ## Choosing a messaging transport
 
-`MESSAGING_PROVIDER` selects what actually moves messages:
+`MESSAGING_PROVIDER` selects what actually moves messages. Discord uses slash-command interactions only (no Gateway or message-content intent):
 
 | Value | Transport | Cost |
 | --- | --- | --- |
 | `mock` | In-memory, records sends | free |
 | `linq` | iMessage via Linq | per Linq's plan |
+| `discord` | Discord slash commands | free |
 | `telegram` | Telegram Bot API | free, no per-message fee |
 
 Leave it unset to keep the older behaviour: `USE_MOCK_LINQ=true` means `mock`,
@@ -124,6 +139,11 @@ The browser simulator at `/` always uses the mock runtime and never spends a
 real messaging account, whichever transport is configured.
 
 ## Connect Linq
+
+For Discord, set `MESSAGING_PROVIDER=discord`, `DISCORD_PUBLIC_KEY`,
+`DISCORD_BOT_TOKEN`, and `DISCORD_APPLICATION_ID`; configure the public HTTPS
+interaction endpoint as `/api/webhooks/discord`, register at least one global
+slash command, then run `npm run discord:doctor` to validate each setting.
 
 1. Get a bearer token and provisioned phone number from Linq.
 2. Set `LINQ_API_KEY`, `LINQ_PHONE_NUMBER`, and a public HTTPS `APP_BASE_URL`
@@ -205,10 +225,20 @@ violations. A member whose hard constraint is broken scores 0, not a penalty.
 Groups a strategy declined are reported separately rather than scored as zero:
 "nothing here works for all of you" is a different outcome from a bad pick.
 
-Strategy (b) needs `ANTHROPIC_API_KEY`; without one it is skipped and the report
-says so, so the harness is useful with no credentials. Everything else is
-deterministic — the corpus is a pure function of `--seed`, pinned by a digest in
-`tests/unit/eval-harness.test.ts`.
+Strategy (b) needs `GEMINI_API_KEY` or `ANTHROPIC_API_KEY`; without either it is
+skipped and the report says so, so the harness is useful with no credentials.
+Gemini is preferred when both are set — grading the shipped scorer against
+another vendor's model is the harder claim to wave away. The model that answered
+is named in the strategy's row, because a fairness number is not comparable
+across models. Everything else is deterministic — the corpus is a pure function
+of `--seed`, pinned by a digest in `tests/unit/eval-harness.test.ts`.
+
+A call that never reaches the provider — quota, a 5xx, a timeout — is counted
+separately from one the model answered badly, and any of the former marks the
+run **not publishable** in the report. The distinction matters: without it a
+rate-limited run looks exactly like a model that declines to answer, which would
+quietly overstate the shipped scorer. Retries and `--concurrency` exist to get a
+run to completion rather than to make it fast.
 
 Measured over 15 groups at seed `20260815`:
 
@@ -222,10 +252,13 @@ naive averaging breaks nine, because averaging a restriction with a preference i
 exactly the mistake that produces "we found somewhere great, sorry about the
 vegetarian". It also declined one group outright rather than answer badly.
 
-**What this does not show.** Strategy (b) has not been funded, so the comparison
-above is only against a naive baseline. And the corpus is synthetic: it measures
-whether the objective is optimised well, not whether the objective matches what
-real groups want.
+**What this does not show.** Strategy (b) is implemented and tested but has not
+completed a publishable run: the Gemini free tier allows 20 generate requests
+per day per model, below what a 15-group run needs once retries are counted, so
+every attempt so far has reported itself unpublishable. The comparison above is
+therefore still only against a naive baseline. And the corpus is synthetic: it
+measures whether the objective is optimised well, not whether the objective
+matches what real groups want.
 
 ```sh
 npm run eval -- --seed=7 --groups=20 --catalogue=mock --strategies=a,c --json
