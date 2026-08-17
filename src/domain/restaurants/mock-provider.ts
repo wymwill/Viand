@@ -21,8 +21,12 @@ export class MockRestaurantProvider implements RestaurantProvider {
   async search(input: RestaurantSearchInput): Promise<RestaurantSearchResult> {
     const results = this.catalogue.filter((candidate) => {
       if (candidate.distanceMiles > input.radiusMiles) return false;
-      if (input.maxPriceLevel != null && candidate.priceLevel > input.maxPriceLevel) return false;
-      if (input.openNowOnly && !candidate.openNow) return false;
+      if (
+        input.maxPriceLevel != null &&
+        candidate.priceLevel != null &&
+        candidate.priceLevel > input.maxPriceLevel
+      ) return false;
+      if (input.openNowOnly && candidate.openNow !== true) return false;
       return true;
     });
 

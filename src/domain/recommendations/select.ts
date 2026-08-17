@@ -67,7 +67,12 @@ export function recommend(
   const { hard, soft } = splitPreferences(preferences);
 
   const eligible = restaurants.filter(
-    (restaurant) => !vetoed.has(restaurant.id) && isEligibleForAll(restaurant, hard),
+    // Unverified hours remain eligible, but a confirmed-closed restaurant must
+    // never survive into ranking regardless of how well it otherwise matches.
+    (restaurant) =>
+      !vetoed.has(restaurant.id) &&
+      isEligibleForAll(restaurant, hard) &&
+      restaurant.openNow !== false,
   );
   const eliminatedCount = restaurants.length - eligible.length;
 
@@ -75,7 +80,9 @@ export function recommend(
     .map((restaurant) => ({ restaurant, score: scoreRestaurant(restaurant, soft) }))
     .sort((a, b) => {
       if (b.score.total !== a.score.total) return b.score.total - a.score.total;
-      if (b.restaurant.rating !== a.restaurant.rating) return b.restaurant.rating - a.restaurant.rating;
+      // This is ordering only; the fallback never feeds the weighted score.
+      const ratingDifference = (b.restaurant.rating ?? -1) - (a.restaurant.rating ?? -1);
+      if (ratingDifference !== 0) return ratingDifference;
       if (a.restaurant.distanceMiles !== b.restaurant.distanceMiles) {
         return a.restaurant.distanceMiles - b.restaurant.distanceMiles;
       }
@@ -154,7 +161,9 @@ function explain(
 
   const anyBudgetStated = constraints.some((c) => c.priceCeiling != null);
   const budgetOkForAll = constraints.every(
-    (c) => c.priceCeiling == null || entry.restaurant.priceLevel <= c.priceCeiling,
+    (c) =>
+      c.priceCeiling == null ||
+      (entry.restaurant.priceLevel != null && entry.restaurant.priceLevel <= c.priceCeiling),
   );
   if (anyBudgetStated && budgetOkForAll) clauses.push("works for everyone's budget");
 
@@ -198,7 +207,8 @@ export function winnerReasons(
   const anyBudgetStated = constraints.some((c) => c.priceCeiling != null);
   if (
     anyBudgetStated &&
-    constraints.every((c) => c.priceCeiling == null || restaurant.priceLevel <= c.priceCeiling)
+    restaurant.priceLevel != null &&
+    constraints.every((c) => c.priceCeiling == null || restaurant.priceLevel! <= c.priceCeiling)
   ) {
     reasons.push("Works for everyone's budget");
   }

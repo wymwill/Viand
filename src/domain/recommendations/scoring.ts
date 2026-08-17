@@ -35,7 +35,14 @@ function clamp01(value: number): number {
  * with genuine ratings is never diluted by it.
  */
 function qualitySignal(restaurant: Restaurant): number {
-  if (restaurant.rating > 0) return clamp01((restaurant.rating - 3) / 2);
+  // Both `null` and `0` mean "no rating published", and neither may be scored
+  // as a bad rating: `(0 - 3) / 2` clamps to zero, which is the score of a
+  // genuinely terrible restaurant. Unknown quality must fall through to the
+  // completeness proxy instead, or every unrated OSM listing is ranked as if
+  // the group had been warned away from it.
+  if (restaurant.rating != null && restaurant.rating > 0) {
+    return clamp01((restaurant.rating - 3) / 2);
+  }
   return clamp01(restaurant.completeness ?? 0);
 }
 
@@ -74,7 +81,13 @@ export function hardRestrictions(
     }
   }
 
-  if (constraints.priceCeiling != null && restaurant.priceLevel > constraints.priceCeiling) {
+  // Unlike dietary requirements, unknown price has no safety dimension. Calling
+  // it definitely over budget would silently discard most of the OSM catalogue.
+  if (
+    constraints.priceCeiling != null &&
+    restaurant.priceLevel != null &&
+    restaurant.priceLevel > constraints.priceCeiling
+  ) {
     violations.push({ kind: "price", maxPriceLevel: constraints.priceCeiling });
   }
 
@@ -109,7 +122,7 @@ function cuisineScore(restaurant: Restaurant, soft: SoftPreferences): number {
  * negative number.
  */
 function priceComfort(restaurant: Restaurant, soft: SoftPreferences): number {
-  if (soft.priceComfortCeiling == null) return 0.75;
+  if (soft.priceComfortCeiling == null || restaurant.priceLevel == null) return 0.75;
   if (restaurant.priceLevel > soft.priceComfortCeiling) return 0;
   // Comfortably under their ceiling scores higher than sitting exactly on it.
   return 0.6 + 0.4 * ((soft.priceComfortCeiling - restaurant.priceLevel) / 3);

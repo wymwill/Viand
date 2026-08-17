@@ -12,6 +12,8 @@ export interface AdvanceInput {
   /** Command and preference already resolved by the interpretation layer. */
   interpretation: Interpretation;
   restaurants: RestaurantProvider;
+  /** Wall clock supplied by the adapter boundary; domain code never constructs it. */
+  now: Date;
 }
 
 export interface AdvanceOutput {
@@ -47,7 +49,7 @@ export async function advance(input: AdvanceInput): Promise<AdvanceOutput> {
 
   for (const effect of effects) {
     if (effect.kind === "RUN_RECOMMENDATION") {
-      await resolveRecommendation(snapshot, outbound, input.restaurants);
+      await resolveRecommendation(snapshot, outbound, input.restaurants, input.now);
     } else if (effect.kind === "ANNOUNCE_WINNER") {
       resolveWinner(snapshot, outbound);
     }
@@ -60,6 +62,7 @@ async function resolveRecommendation(
   snapshot: SessionSnapshot,
   outbound: OutboundIntent[],
   restaurants: RestaurantProvider,
+  now: Date,
 ): Promise<void> {
   const preferences = preferenceList(snapshot);
 
@@ -68,6 +71,7 @@ async function resolveRecommendation(
     found = await restaurants.search({
       locationText: snapshot.locationText ?? "",
       radiusMiles: snapshot.radiusMiles,
+      now,
     });
   } catch (error) {
     // The group gets a friendly retry, but an operator still needs to know why

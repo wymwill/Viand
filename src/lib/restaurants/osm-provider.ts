@@ -16,6 +16,7 @@ import {
   phoneFromOsmTags,
   websiteFromOsmTags,
 } from "./osm-tags";
+import { evaluateOpeningHours } from "./opening-hours";
 
 /**
  * Listings from OpenStreetMap, geocoded through Nominatim.
@@ -164,11 +165,15 @@ export class OsmRestaurantProvider implements RestaurantProvider {
 
     const restaurants: Restaurant[] = [];
     for (const element of elements) {
-      const restaurant = this.normalise(element, center);
+      const restaurant = this.normalise(element, center, input.now);
       if (!restaurant) continue;
       if (restaurant.distanceMiles > input.radiusMiles) continue;
-      if (input.maxPriceLevel != null && restaurant.priceLevel > input.maxPriceLevel) continue;
-      if (input.openNowOnly && !restaurant.openNow) continue;
+      if (
+        input.maxPriceLevel != null &&
+        restaurant.priceLevel != null &&
+        restaurant.priceLevel > input.maxPriceLevel
+      ) continue;
+      if (input.openNowOnly && restaurant.openNow !== true) continue;
       restaurants.push(restaurant);
     }
 
@@ -338,7 +343,7 @@ export class OsmRestaurantProvider implements RestaurantProvider {
     }
   }
 
-  private normalise(element: OverpassElement, center: LatLng): Restaurant | null {
+  private normalise(element: OverpassElement, center: LatLng, now: Date): Restaurant | null {
     const tags = element.tags ?? {};
     const name = tags.name?.trim();
     const position = coordinatesOf(element);
@@ -347,6 +352,8 @@ export class OsmRestaurantProvider implements RestaurantProvider {
     // The group asked for somewhere to eat, not the nearest McDonald's.
     if (isNameBrandChain(tags)) return null;
 
+    const openStatus = evaluateOpeningHours(tags.opening_hours, now);
+
     return {
       id: `${element.type ?? "node"}/${element.id}`,
       name,
@@ -354,22 +361,19 @@ export class OsmRestaurantProvider implements RestaurantProvider {
       chainId: brandOf(tags) ?? chainIdOf(name),
       address: addressFromOsmTags(tags),
       cuisine: cuisineFromOsmTags(tags),
-      // OSM has no price data. The field is not optional downstream, and a mid
-      // band neither sneaks an expensive restaurant past a budget nor hides a
-      // cheap one.
-      priceLevel: 2,
-      // No ratings either. Zero reads as "unknown" downstream and is omitted
-      // from the message rather than shown as nought stars.
-      rating: 0,
+      // OSM has no price data, so null is honest where a middle-band guess could
+      // wrongly exclude a listing against a real budget.
+      priceLevel: null,
+      // OSM has no rating data, so this is null rather than a guessed sentinel.
+      rating: null,
       distanceMiles: distanceMiles(center, position),
       mapsUrl: `https://www.google.com/maps/search/?api=1&query=${position.latitude},${position.longitude}`,
       accommodates: accommodatesFromOsmTags(tags),
       website: websiteFromOsmTags(tags),
       phone: phoneFromOsmTags(tags),
       completeness: completenessOfOsmTags(tags),
-      // OSM's `opening_hours` grammar is far richer than a boolean, and a wrong
-      // "open now" sends a group to a closed door. Nothing is claimed.
-      openNow: true,
+      openNow: openStatus === "open" ? true : openStatus === "closed" ? false : null,
+      openingHoursRaw: tags.opening_hours ?? null,
     };
   }
 }

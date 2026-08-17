@@ -13,7 +13,7 @@ async function say(snapshot: SessionSnapshot, memberId: string, text: string) {
     command: parseCommand(text),
     state: snapshot.state,
   });
-  return advance({ snapshot, memberId, interpretation, restaurants });
+  return advance({ snapshot, memberId, interpretation, restaurants, now: new Date() });
 }
 
 describe("full group decision flow", () => {
@@ -96,6 +96,7 @@ describe("full group decision flow", () => {
       memberId: "alice",
       interpretation,
       restaurants: broken,
+      now: new Date(),
     });
 
     expect(result.replies.at(-1)?.text).toContain("couldn't reach the restaurant listings");

@@ -1,7 +1,7 @@
 [
   {
     "name": "no preferences at all",
-    "eliminatedCount": 0,
+    "eliminatedCount": 2,
     "needsAllergyDisclaimer": false,
     "candidates": [
       {
@@ -19,7 +19,7 @@
       },
       {
         "id": "green-fork",
-        "explanation": "Strongest cuisine match, closest option.",
+        "explanation": "Strongest cuisine match.",
         "score": {
           "total": 0.7255,
           "weakestMember": 0.7,
@@ -27,19 +27,6 @@
           "cuisineMatch": 0.7,
           "distance": 0.88,
           "rating": 0.75,
-          "priceMatch": 0.75
-        }
-      },
-      {
-        "id": "cafe-lumiere",
-        "explanation": "Strongest cuisine match.",
-        "score": {
-          "total": 0.7095,
-          "weakestMember": 0.7,
-          "averageMember": 0.7,
-          "cuisineMatch": 0.7,
-          "distance": 0.82,
-          "rating": 0.65,
           "priceMatch": 0.75
         }
       },
@@ -68,12 +55,25 @@
           "rating": 0.7,
           "priceMatch": 0.75
         }
+      },
+      {
+        "id": "slice-society-downtown",
+        "explanation": "Strongest cuisine match, closest option.",
+        "score": {
+          "total": 0.7045,
+          "weakestMember": 0.7,
+          "averageMember": 0.7,
+          "cuisineMatch": 0.7,
+          "distance": 0.92,
+          "rating": 0.5,
+          "priceMatch": 0.75
+        }
       }
     ]
   },
   {
     "name": "single default member",
-    "eliminatedCount": 0,
+    "eliminatedCount": 2,
     "needsAllergyDisclaimer": false,
     "candidates": [
       {
@@ -116,19 +116,6 @@
         }
       },
       {
-        "id": "cafe-lumiere",
-        "explanation": "Strongest cuisine match.",
-        "score": {
-          "total": 0.6999,
-          "weakestMember": 0.734,
-          "averageMember": 0.734,
-          "cuisineMatch": 0.5,
-          "distance": 0.82,
-          "rating": 0.65,
-          "priceMatch": 0.75
-        }
-      },
-      {
         "id": "seoul-bowl",
         "explanation": "Strongest cuisine match.",
         "score": {
@@ -140,12 +127,25 @@
           "rating": 0.7,
           "priceMatch": 0.75
         }
+      },
+      {
+        "id": "noodle-house",
+        "explanation": "Strongest cuisine match.",
+        "score": {
+          "total": 0.6811,
+          "weakestMember": 0.726,
+          "averageMember": 0.726,
+          "cuisineMatch": 0.5,
+          "distance": 0.78,
+          "rating": 0.55,
+          "priceMatch": 0.75
+        }
       }
     ]
   },
   {
     "name": "single easygoing member",
-    "eliminatedCount": 0,
+    "eliminatedCount": 2,
     "needsAllergyDisclaimer": false,
     "candidates": [
       {
@@ -163,7 +163,7 @@
       },
       {
         "id": "green-fork",
-        "explanation": "Strongest cuisine match, closest option.",
+        "explanation": "Strongest cuisine match.",
         "score": {
           "total": 0.7555,
           "weakestMember": 0.8,
@@ -171,19 +171,6 @@
           "cuisineMatch": 0.5,
           "distance": 0.88,
           "rating": 0.75,
-          "priceMatch": 0.75
-        }
-      },
-      {
-        "id": "cafe-lumiere",
-        "explanation": "Strongest cuisine match.",
-        "score": {
-          "total": 0.7395,
-          "weakestMember": 0.8,
-          "averageMember": 0.8,
-          "cuisineMatch": 0.5,
-          "distance": 0.82,
-          "rating": 0.65,
           "priceMatch": 0.75
         }
       },
@@ -212,12 +199,25 @@
           "rating": 0.7,
           "priceMatch": 0.75
         }
+      },
+      {
+        "id": "slice-society-downtown",
+        "explanation": "Strongest cuisine match, closest option.",
+        "score": {
+          "total": 0.7345,
+          "weakestMember": 0.8,
+          "averageMember": 0.8,
+          "cuisineMatch": 0.5,
+          "distance": 0.92,
+          "rating": 0.5,
+          "priceMatch": 0.75
+        }
       }
     ]
   },
   {
     "name": "exact cuisine preference",
-    "eliminatedCount": 0,
+    "eliminatedCount": 2,
     "needsAllergyDisclaimer": false,
     "candidates": [
       {
@@ -260,19 +260,6 @@
         }
       },
       {
-        "id": "cafe-lumiere",
-        "explanation": "Solid all-round option.",
-        "score": {
-          "total": 0.4989,
-          "weakestMember": 0.524,
-          "averageMember": 0.524,
-          "cuisineMatch": 0,
-          "distance": 0.82,
-          "rating": 0.65,
-          "priceMatch": 0.75
-        }
-      },
-      {
         "id": "seoul-bowl",
         "explanation": "Solid all-round option.",
         "score": {
@@ -284,12 +271,25 @@
           "rating": 0.7,
           "priceMatch": 0.75
         }
+      },
+      {
+        "id": "noodle-house",
+        "explanation": "Solid all-round option.",
+        "score": {
+          "total": 0.4801,
+          "weakestMember": 0.516,
+          "averageMember": 0.516,
+          "cuisineMatch": 0,
+          "distance": 0.78,
+          "rating": 0.55,
+          "priceMatch": 0.75
+        }
       }
     ]
   },
   {
     "name": "cuisine family partial credit",
-    "eliminatedCount": 0,
+    "eliminatedCount": 2,
     "needsAllergyDisclaimer": false,
     "candidates": [
       {
@@ -320,7 +320,7 @@
       },
       {
         "id": "noodle-house",
-        "explanation": "Closest option.",
+        "explanation": "Solid all-round option.",
         "score": {
           "total": 0.6601,
           "weakestMember": 0.816,
@@ -345,15 +345,15 @@
         }
       },
       {
-        "id": "golden-wok",
-        "explanation": "Solid all-round option.",
+        "id": "green-fork",
+        "explanation": "Closest option.",
         "score": {
-          "total": 0.5753,
-          "weakestMember": 0.748,
-          "averageMember": 0.748,
+          "total": 0.5221,
+          "weakestMember": 0.536,
+          "averageMember": 0.536,
           "cuisineMatch": 0,
-          "distance": 0.44,
-          "rating": 0.45,
+          "distance": 0.88,
+          "rating": 0.75,
           "priceMatch": 0.75
         }
       }
@@ -361,7 +361,7 @@
   },
   {
     "name": "excluded cuisine",
-    "eliminatedCount": 5,
+    "eliminatedCount": 7,
     "needsAllergyDisclaimer": false,
     "candidates": [
       {
@@ -374,19 +374,6 @@
           "cuisineMatch": 0.5,
           "distance": 0.88,
           "rating": 0.75,
-          "priceMatch": 0.75
-        }
-      },
-      {
-        "id": "cafe-lumiere",
-        "explanation": "Strongest cuisine match.",
-        "score": {
-          "total": 0.6999,
-          "weakestMember": 0.734,
-          "averageMember": 0.734,
-          "cuisineMatch": 0.5,
-          "distance": 0.82,
-          "rating": 0.65,
           "priceMatch": 0.75
         }
       },
@@ -428,12 +415,25 @@
           "rating": 0.55,
           "priceMatch": 0.75
         }
+      },
+      {
+        "id": "halal-cart-kitchen",
+        "explanation": "Strongest cuisine match.",
+        "score": {
+          "total": 0.6747,
+          "weakestMember": 0.702,
+          "averageMember": 0.702,
+          "cuisineMatch": 0.5,
+          "distance": 0.66,
+          "rating": 0.75,
+          "priceMatch": 0.75
+        }
       }
     ]
   },
   {
     "name": "dietary requirement",
-    "eliminatedCount": 14,
+    "eliminatedCount": 15,
     "needsAllergyDisclaimer": false,
     "candidates": [
       {
@@ -463,19 +463,6 @@
         }
       },
       {
-        "id": "cafe-lumiere",
-        "explanation": "Strongest cuisine match, has vegan options.",
-        "score": {
-          "total": 0.6999,
-          "weakestMember": 0.734,
-          "averageMember": 0.734,
-          "cuisineMatch": 0.5,
-          "distance": 0.82,
-          "rating": 0.65,
-          "priceMatch": 0.75
-        }
-      },
-      {
         "id": "dosa-corner",
         "explanation": "Strongest cuisine match, has vegan options.",
         "score": {
@@ -500,12 +487,25 @@
           "rating": 0.8,
           "priceMatch": 0.75
         }
+      },
+      {
+        "id": "casa-verde",
+        "explanation": "Strongest cuisine match, has vegan options.",
+        "score": {
+          "total": 0.6289,
+          "weakestMember": 0.674,
+          "averageMember": 0.674,
+          "cuisineMatch": 0.5,
+          "distance": 0.52,
+          "rating": 0.6,
+          "priceMatch": 0.75
+        }
       }
     ]
   },
   {
     "name": "price ceiling only",
-    "eliminatedCount": 3,
+    "eliminatedCount": 5,
     "needsAllergyDisclaimer": false,
     "candidates": [
       {
@@ -548,19 +548,6 @@
         }
       },
       {
-        "id": "cafe-lumiere",
-        "explanation": "Works for everyone's budget, strongest cuisine match.",
-        "score": {
-          "total": 0.6744,
-          "weakestMember": 0.704,
-          "averageMember": 0.704,
-          "cuisineMatch": 0.5,
-          "distance": 0.82,
-          "rating": 0.65,
-          "priceMatch": 0.6
-        }
-      },
-      {
         "id": "halal-cart-kitchen",
         "explanation": "Works for everyone's budget, strongest cuisine match.",
         "score": {
@@ -572,12 +559,25 @@
           "rating": 0.75,
           "priceMatch": 0.733333333333
         }
+      },
+      {
+        "id": "dosa-corner",
+        "explanation": "Works for everyone's budget, strongest cuisine match.",
+        "score": {
+          "total": 0.668066666667,
+          "weakestMember": 0.690666666667,
+          "averageMember": 0.690666666667,
+          "cuisineMatch": 0.5,
+          "distance": 0.62,
+          "rating": 0.8,
+          "priceMatch": 0.733333333333
+        }
       }
     ]
   },
   {
     "name": "distance limit only",
-    "eliminatedCount": 14,
+    "eliminatedCount": 15,
     "needsAllergyDisclaimer": false,
     "candidates": [
       {
@@ -620,19 +620,6 @@
         }
       },
       {
-        "id": "cafe-lumiere",
-        "explanation": "Strongest cuisine match.",
-        "score": {
-          "total": 0.6315,
-          "weakestMember": 0.62,
-          "averageMember": 0.62,
-          "cuisineMatch": 0.5,
-          "distance": 0.82,
-          "rating": 0.65,
-          "priceMatch": 0.75
-        }
-      },
-      {
         "id": "noodle-house",
         "explanation": "Strongest cuisine match.",
         "score": {
@@ -644,12 +631,25 @@
           "rating": 0.55,
           "priceMatch": 0.75
         }
+      },
+      {
+        "id": "burger-yard",
+        "explanation": "Strongest cuisine match.",
+        "score": {
+          "total": 0.5855,
+          "weakestMember": 0.57,
+          "averageMember": 0.57,
+          "cuisineMatch": 0.5,
+          "distance": 0.76,
+          "rating": 0.55,
+          "priceMatch": 0.75
+        }
       }
     ]
   },
   {
     "name": "mixed group of four",
-    "eliminatedCount": 10,
+    "eliminatedCount": 11,
     "needsAllergyDisclaimer": false,
     "candidates": [
       {
@@ -793,7 +793,7 @@
   },
   {
     "name": "veto applied",
-    "eliminatedCount": 1,
+    "eliminatedCount": 3,
     "needsAllergyDisclaimer": false,
     "candidates": [
       {
@@ -836,19 +836,6 @@
         }
       },
       {
-        "id": "cafe-lumiere",
-        "explanation": "Solid all-round option.",
-        "score": {
-          "total": 0.4989,
-          "weakestMember": 0.524,
-          "averageMember": 0.524,
-          "cuisineMatch": 0,
-          "distance": 0.82,
-          "rating": 0.65,
-          "priceMatch": 0.75
-        }
-      },
-      {
         "id": "seoul-bowl",
         "explanation": "Solid all-round option.",
         "score": {
@@ -860,12 +847,25 @@
           "rating": 0.7,
           "priceMatch": 0.75
         }
+      },
+      {
+        "id": "noodle-house",
+        "explanation": "Solid all-round option.",
+        "score": {
+          "total": 0.4801,
+          "weakestMember": 0.516,
+          "averageMember": 0.516,
+          "cuisineMatch": 0,
+          "distance": 0.78,
+          "rating": 0.55,
+          "priceMatch": 0.75
+        }
       }
     ]
   },
   {
     "name": "explicit limit of three",
-    "eliminatedCount": 0,
+    "eliminatedCount": 2,
     "needsAllergyDisclaimer": false,
     "candidates": [
       {

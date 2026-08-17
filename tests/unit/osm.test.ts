@@ -37,7 +37,11 @@ function stubFetch(elements: unknown[], onGeocode?: () => void) {
   }) as unknown as typeof fetch;
 }
 
-const search = { locationText: "Berkeley", radiusMiles: 5 };
+const search = {
+  locationText: "Berkeley",
+  radiusMiles: 5,
+  now: new Date("2024-01-01T12:00:00Z"),
+};
 
 function provider(elements: unknown[], onGeocode?: () => void) {
   return new OsmRestaurantProvider({ fetchImpl: stubFetch(elements, onGeocode) });
@@ -176,6 +180,7 @@ describe("Overpass query cost", () => {
     await new OsmRestaurantProvider({ fetchImpl, overpassUrl: "https://a.example/api" }).search({
       locationText: "Berkeley",
       radiusMiles: 5,
+      now: new Date(),
     });
 
     expect(queries.map((query) => Number(/around:(\d+)/.exec(query)?.[1]))).toEqual([1500, 8047]);
@@ -267,7 +272,11 @@ describe("Overpass query cost", () => {
   });
 
   it("never asks for more than the group's radius", async () => {
-    await provider([node()]).search({ locationText: "Berkeley", radiusMiles: 0.5 });
+    await provider([node()]).search({
+      locationText: "Berkeley",
+      radiusMiles: 0.5,
+      now: new Date(),
+    });
     const around = /around:(\d+)/.exec(lastQuery);
     expect(Number(around?.[1])).toBeLessThan(1000);
   });
@@ -335,8 +344,10 @@ describe("OsmRestaurantProvider", () => {
       name: "Tacoria",
       cuisine: "mexican",
       // OSM publishes neither, so neither is claimed.
-      rating: 0,
-      priceLevel: 2,
+      rating: null,
+      priceLevel: null,
+      openNow: null,
+      openingHoursRaw: null,
     });
   });
 
@@ -384,7 +395,7 @@ describe("OsmRestaurantProvider", () => {
     let geocoded = false;
     const result = await provider([node()], () => {
       geocoded = true;
-    }).search({ locationText: "37.8715,-122.2730", radiusMiles: 5 });
+    }).search({ ...search, locationText: "37.8715,-122.2730" });
 
     expect(geocoded).toBe(false);
     expect(result.resolvedLocation).toBe("the shared location");

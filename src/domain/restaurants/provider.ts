@@ -11,14 +11,22 @@ export interface Restaurant {
   chainId: string | null;
   address: string;
   cuisine: Cuisine;
-  priceLevel: PriceLevel;
-  /** 0–5. */
-  rating: number;
+  /** 1–4 when published; null when the source has no price data. */
+  priceLevel: PriceLevel | null;
+  /** 0–5 when published; null when the source has no rating data. */
+  rating: number | null;
   distanceMiles: number;
   mapsUrl: string;
   /** Dietary requirements this restaurant can accommodate. */
   accommodates: DietaryRequirement[];
-  openNow: boolean;
+  /**
+   * True means confirmed open at query time, false means confirmed closed, and
+   * null means the hours were absent or could not be confidently understood.
+   * The group must never be told an unverified place is open.
+   */
+  openNow: boolean | null;
+  /** Raw OSM-style hours, retained so unverified hours can still be surfaced. */
+  openingHoursRaw: string | null;
   /** The place's own site, when the source publishes one. */
   website?: string | null;
   phone?: string | null;
@@ -33,6 +41,11 @@ export interface RestaurantSearchInput {
   /** Free text exactly as the group typed it. Not geocoded in phase 1. */
   locationText: string;
   radiusMiles: number;
+  /**
+   * Wall clock supplied by the adapter layer that owns real time. Providers and
+   * domain code must never read it from an ambient clock.
+   */
+  now: Date;
   /** Cuisines any member asked for; a hint for ranking, never a filter. */
   cuisineHints?: Cuisine[];
   maxPriceLevel?: PriceLevel | null;
@@ -66,4 +79,3 @@ export const OSM_SOURCE_LABEL = "Live results from OpenStreetMap.";
 export interface RestaurantProvider {
   search(input: RestaurantSearchInput): Promise<RestaurantSearchResult>;
 }
-

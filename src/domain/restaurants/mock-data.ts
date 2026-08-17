@@ -4,8 +4,8 @@ function mapsUrl(name: string, address: string): string {
   return `https://maps.google.com/?q=${encodeURIComponent(`${name}, ${address}`)}`;
 }
 
-function restaurant(input: Omit<Restaurant, "mapsUrl">): Restaurant {
-  return { ...input, mapsUrl: mapsUrl(input.name, input.address) };
+function restaurant(input: Omit<Restaurant, "mapsUrl" | "openingHoursRaw">): Restaurant {
+  return { ...input, mapsUrl: mapsUrl(input.name, input.address), openingHoursRaw: null };
 }
 
 /**

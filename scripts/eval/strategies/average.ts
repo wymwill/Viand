@@ -63,7 +63,7 @@ export function averageStrategy(group: EvalGroup, catalogue: readonly Restaurant
 
   for (const restaurant of catalogue) {
     const cuisine = demand.get(restaurant.cuisine) ?? 0;
-    const price = clamp01(1 - Math.max(0, restaurant.priceLevel - averagePrice) / 3);
+    const price = clamp01(1 - Math.max(0, (restaurant.priceLevel ?? averagePrice) - averagePrice) / 3);
     const distance = clamp01(1 - restaurant.distanceMiles / averageDistance);
     const score = CUISINE_WEIGHT * cuisine + PRICE_WEIGHT * price + DISTANCE_WEIGHT * distance;
 

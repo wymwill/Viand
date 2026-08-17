@@ -38,6 +38,7 @@ export function restaurant(overrides: Partial<Restaurant> = {}): Restaurant {
     mapsUrl: "https://maps.google.com/?q=test",
     accommodates: [],
     openNow: true,
+    openingHoursRaw: null,
     ...overrides,
   };
 }

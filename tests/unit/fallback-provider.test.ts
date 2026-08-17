@@ -29,7 +29,7 @@ function broken(message = "unavailable"): RestaurantProvider {
   };
 }
 
-const input = { locationText: "Berkeley", radiusMiles: 5 };
+const input = { locationText: "Berkeley", radiusMiles: 5, now: new Date("2024-01-01T12:00:00Z") };
 const silent = () => {};
 
 describe("FallbackRestaurantProvider", () => {

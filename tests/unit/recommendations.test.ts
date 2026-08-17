@@ -203,3 +203,59 @@ describe("option selection", () => {
     expect(reasons.some((reason) => reason.includes("miles away"))).toBe(true);
   });
 });
+
+describe("opening hours", () => {
+  /**
+   * The failure this prevents is the one that makes the product feel broken:
+   * a confidently recommended restaurant that is shut. A closed restaurant is
+   * eliminated like any other hard constraint — removed before ranking, never
+   * merely penalised, so no amount of rating or proximity can promote it back.
+   */
+  it("never offers a restaurant that is closed at the query time", () => {
+    const open = restaurant({ id: "open-place", cuisine: "mexican", openNow: true });
+    const closed = restaurant({
+      id: "closed-place",
+      cuisine: "mexican",
+      openNow: false,
+      // Deliberately the better option on every soft dimension.
+      rating: 5,
+      distanceMiles: 0.1,
+    });
+
+    const result = recommend([open, closed], [preference({ preferredCuisines: ["mexican"] })]);
+
+    expect(result.candidates.map((candidate) => candidate.restaurant.id)).toEqual(["open-place"]);
+  });
+
+  it("still offers a restaurant whose hours could not be verified", () => {
+    // Unverified is not closed. Dropping these would empty the list in most of
+    // OpenStreetMap, where opening_hours is frequently absent or unparseable.
+    const unverified = restaurant({ id: "unknown-hours", cuisine: "mexican", openNow: null });
+
+    const result = recommend([unverified], [preference({ preferredCuisines: ["mexican"] })]);
+
+    expect(result.candidates.map((candidate) => candidate.restaurant.id)).toEqual([
+      "unknown-hours",
+    ]);
+  });
+
+  it("treats both shapes of a missing rating as unknown, not as a bad rating", () => {
+    // `null` and `0` are the two ways a source says "no rating". Both must fall
+    // through to the completeness proxy. Completeness is set high here so a
+    // regression that scored them as a one-star review would fail loudly —
+    // asserting only that the two agree would pass on two zeroes.
+    const soften = soft({});
+    const rated = restaurant({ id: "rated", rating: 4.5, completeness: 0.9 });
+    const nullRating = restaurant({ id: "null-rating", rating: null, completeness: 0.9 });
+    const zeroRating = restaurant({ id: "zero-rating", rating: 0, completeness: 0.9 });
+
+    const nullScore = scoreRestaurant(nullRating, [soften]).rating;
+    const zeroScore = scoreRestaurant(zeroRating, [soften]).rating;
+
+    expect(nullScore).toBe(zeroScore);
+    expect(nullScore).toBe(0.9);
+    // Sanity: a real rating still drives the term, so the proxy has not
+    // swallowed the signal for sources that do publish one.
+    expect(scoreRestaurant(rated, [soften]).rating).toBe(0.75);
+  });
+});

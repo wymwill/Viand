@@ -37,7 +37,7 @@ export function violatesHardConstraint(
     case "excluded_cuisine":
       return restaurant.cuisine === constraint.cuisine;
     case "price_cap":
-      return restaurant.priceLevel > constraint.maxPriceLevel;
+      return restaurant.priceLevel != null && restaurant.priceLevel > constraint.maxPriceLevel;
     case "distance_cap":
       return restaurant.distanceMiles > constraint.maxMiles;
   }
@@ -55,7 +55,11 @@ export function satisfaction(member: EvalMember, restaurant: Restaurant): number
   const { latent } = member;
   const cuisine = latent.cuisineUtility[restaurant.cuisine];
   const price = clamp01(
-    1 - latent.pricePenalty * Math.max(0, restaurant.priceLevel - latent.idealPriceLevel),
+    // Synthetic catalogues always have a price; this is defensive typing for
+    // the shared Restaurant shape and leaves unknown price neutral.
+    1 -
+      latent.pricePenalty *
+        Math.max(0, (restaurant.priceLevel ?? latent.idealPriceLevel) - latent.idealPriceLevel),
   );
   const distance = clamp01(1 - restaurant.distanceMiles / latent.distanceTolerance);
 

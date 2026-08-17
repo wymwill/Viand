@@ -28,7 +28,11 @@ function source() {
   return { provider, state };
 }
 
-const input = { locationText: "Downtown Berkeley", radiusMiles: 5 };
+const input = {
+  locationText: "Downtown Berkeley",
+  radiusMiles: 5,
+  now: new Date("2024-01-01T12:00:00Z"),
+};
 const silent = () => {};
 
 describe("CachedRestaurantProvider", () => {

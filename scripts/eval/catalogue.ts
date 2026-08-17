@@ -85,11 +85,15 @@ export function generateCatalogue(rng: Rng, size: number): Restaurant[] {
       address,
       cuisine,
       priceLevel: rng.int(1, 4) as PriceLevel,
-      rating: hasRating ? rng.round(3, 5, 1) : 0,
+      rating: hasRating ? rng.round(3, 5, 1) : null,
       distanceMiles: rng.round(0.2, 5, 1),
       mapsUrl: `https://maps.google.com/?q=${encodeURIComponent(`${name}, ${address}`)}`,
       accommodates: [...accommodates],
       openNow: true,
+      // The corpus holds hours constant so the comparison stays a test of
+      // preference handling; opening hours are a filter applied before any
+      // strategy sees a candidate, not something a strategy can get wrong.
+      openingHoursRaw: null,
       ...(hasRating ? {} : { completeness: rng.round(0.3, 1, 2) }),
     });
   }
