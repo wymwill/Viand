@@ -39,7 +39,12 @@ const DEFAULT_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 /** Overpass is a shared volunteer service; keep even configured queries bounded. */
 const MAX_OVERPASS_RADIUS_METRES = 10_000;
 const TIER_1_RADIUS_METRES = 1_500;
-const MIN_RESULTS_BEFORE_ESCALATING = 12;
+/**
+ * Above this radius a query is restricted to a single amenity clause. See the
+ * measurements in the query builder: clause count, not element type, is what
+ * makes a wide Overpass search time out.
+ */
+const BROAD_QUERY_RADIUS_METRES = 2_500;
 /**
  * Ceiling on elements fetched per query.
  *
@@ -52,9 +57,9 @@ const MIN_RESULTS_BEFORE_ESCALATING = 12;
 const MAX_OVERPASS_RESULTS = 150;
 
 /**
- * Query progressively to limit load on volunteer-run Overpass mirrors. A cheap
- * 1.5-kilometre pass is enough in result-dense areas; only a thin result set
- * triggers the full requested radius. On 2026-08-16 one available mirror was
+ * Ceiling on how far a single Overpass query may reach, independent of what the
+ * group asked for, so one request cannot sweep an unbounded area of a
+ * volunteer-run mirror. On 2026-08-16 one available mirror was
  * observed answering the existing capped node query in about 11 seconds at
  * 1.5km and 21.5 seconds at 8047m in both dense and suburban tests, while two
  * other public endpoints were overloaded even at 1.5km. That supports tiering
@@ -235,28 +240,41 @@ export class OsmRestaurantProvider implements RestaurantProvider {
     };
   }
 
+  /**
+   * Searches the radius the group actually asked for.
+   *
+   * This previously ran a cheap 1.5km pass first and stopped there whenever it
+   * returned enough results, which in any dense city meant a five mile request
+   * was answered with a 0.93 mile search — and `radiusDegraded` stayed false,
+   * so nobody was told. A restaurant two miles away was invisible no matter how
+   * well it fit.
+   *
+   * The narrow query is now the fallback rather than the gate: the requested
+   * radius is tried first, and only if that fails does a cheap close-in pass
+   * run so the group gets something, flagged so the reply can say the full
+   * radius was not reached. That is also no more load on the volunteer mirrors
+   * than before — one query in the normal case, where a sparse area used to
+   * cost two.
+   */
   private async searchOverpass(center: LatLng, radiusMiles: number): Promise<OverpassSearch> {
     const cap = Math.min(
       this.options.maxQueryRadiusMetres ?? DEFAULT_MAX_QUERY_RADIUS_METRES,
       MAX_OVERPASS_RADIUS_METRES,
     );
     const targetRadius = Math.round(Math.min(Math.max(radiusMiles * METRES_PER_MILE, 1), cap));
-    const tier1Radius = Math.min(TIER_1_RADIUS_METRES, targetRadius);
-    const tier1Elements = await this.queryOverpass(center, tier1Radius);
-
-    if (tier1Radius >= targetRadius) {
-      return { elements: tier1Elements, searchedRadiusMetres: targetRadius, radiusDegraded: false };
-    }
-    if (tier1Elements.length >= MIN_RESULTS_BEFORE_ESCALATING) {
-      return { elements: tier1Elements, searchedRadiusMetres: tier1Radius, radiusDegraded: false };
-    }
 
     try {
       const elements = await this.queryOverpass(center, targetRadius);
       return { elements, searchedRadiusMetres: targetRadius, radiusDegraded: false };
     } catch (error) {
-      if (tier1Elements.length === 0) throw error;
-      return { elements: tier1Elements, searchedRadiusMetres: tier1Radius, radiusDegraded: true };
+      const fallbackRadius = Math.min(TIER_1_RADIUS_METRES, targetRadius);
+      // Nothing cheaper to try; the caller turns this into "couldn't reach the
+      // listings", which is the truth.
+      if (fallbackRadius >= targetRadius) throw error;
+
+      const elements = await this.queryOverpass(center, fallbackRadius);
+      if (elements.length === 0) throw error;
+      return { elements, searchedRadiusMetres: fallbackRadius, radiusDegraded: true };
     }
   }
 
@@ -274,22 +292,36 @@ export class OsmRestaurantProvider implements RestaurantProvider {
     // Overpass's index and forces a scan.
     //
     // `nwr` rather than `node`, because in older, denser cities a large share
-    // of restaurants are mapped as building outlines rather than points —
-    // Boston's North End returned none of its landmark Italian restaurants
-    // while this queried nodes alone. Polygons cost a centroid each, which
-    // `out center` already computes, and the tiered radius keeps that bounded.
+    // of restaurants are mapped as building outlines rather than points.
+    //
+    // How many amenity clauses we can afford depends on the radius, and that
+    // is the whole reason wide searches used to collapse back to a one mile
+    // result. Each clause is an independent spatial pass, and measured against
+    // a public mirror over central Boston at five miles: one clause answered in
+    // 2.7s, two took 38s, and three or more returned 504 — regardless of
+    // whether they queried nodes or polygons. So a wide search asks only for
+    // restaurants, which fills the result cap on its own in any dense area,
+    // and the fuller set of eating places is reserved for close-in searches
+    // where it is affordable.
     const around = `(around:${radius},${center.latitude},${center.longitude})`;
+    const wide = radius > BROAD_QUERY_RADIUS_METRES;
+    const clauses = wide
+      ? [`  nwr["amenity"="restaurant"]["name"]${around};`]
+      : [
+          `  nwr["amenity"="restaurant"]["name"]${around};`,
+          `  nwr["amenity"="fast_food"]["name"]${around};`,
+          `  nwr["amenity"="cafe"]["name"]${around};`,
+          `  nwr["amenity"="food_court"]["name"]${around};`,
+          // Bars and pubs serve food and a group deciding where to eat
+          // routinely lands on one.
+          `  nwr["amenity"="bar"]["food"="yes"]["name"]${around};`,
+          `  nwr["amenity"="pub"]["name"]${around};`,
+        ];
+
     const query = [
       `[out:json][timeout:${serverTimeoutSeconds}];`,
       "(",
-      `  nwr["amenity"="restaurant"]["name"]${around};`,
-      `  nwr["amenity"="fast_food"]["name"]${around};`,
-      `  nwr["amenity"="cafe"]["name"]${around};`,
-      `  nwr["amenity"="food_court"]["name"]${around};`,
-      // Bars and pubs serve food and a group deciding where to eat routinely
-      // lands on one; they were absent entirely.
-      `  nwr["amenity"="bar"]["food"="yes"]["name"]${around};`,
-      `  nwr["amenity"="pub"]["name"]${around};`,
+      ...clauses,
       ");",
       `out center tags ${MAX_OVERPASS_RESULTS};`,
     ].join("\n");

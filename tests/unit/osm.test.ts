@@ -83,8 +83,8 @@ describe("Overpass endpoint failover", () => {
       overpassUrl: "https://a.example/api,https://b.example/api",
     }).search(search);
 
-    // Twelve results satisfy the first pass, so failover costs one query per
-    // endpoint and never escalates to the full radius.
+    // Failover costs one query per endpoint at the requested radius; the
+    // second endpoint answers, so no close-in retry is needed.
     expect(tried).toHaveLength(2);
     expect(result.restaurants).toHaveLength(12);
   });
@@ -168,7 +168,7 @@ describe("Overpass endpoint failover", () => {
 });
 
 describe("Overpass query cost", () => {
-  it("escalates a thin first pass to the group's full search radius", async () => {
+  it("searches the radius the group actually asked for", async () => {
     const queries: string[] = [];
     const fetchImpl = (async (target: RequestInfo | URL, init?: RequestInit) => {
       const url = String(target);
@@ -183,40 +183,20 @@ describe("Overpass query cost", () => {
       now: new Date(),
     });
 
-    expect(queries.map((query) => Number(/around:(\d+)/.exec(query)?.[1]))).toEqual([1500, 8047]);
+    // One query, at the requested radius. A cheap close-in pass used to run
+    // first and, in a dense area, stop there — silently turning a five mile
+    // request into a 0.93 mile one.
+    expect(queries.map((query) => Number(/around:(\d+)/.exec(query)?.[1]))).toEqual([8047]);
   });
 
-  it("stops after the cheap tier when it finds enough results", async () => {
-    const calls: string[] = [];
-    const elements = Array.from({ length: 15 }, (_, id) => node({ id: id + 1 }));
-    const fetchImpl = (async (target: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(target);
-      calls.push(url);
-      if (url.includes("nominatim")) return stubFetch([])(target as RequestInfo, init);
-      lastQuery = decodeURIComponent(String(init?.body ?? ""));
-      return new Response(JSON.stringify({ elements }), { status: 200 });
-    }) as unknown as typeof fetch;
-
-    const result = await new OsmRestaurantProvider({
-      fetchImpl,
-      overpassUrl: "https://a.example/api",
-    }).search(search);
-
-    expect(calls).toHaveLength(2);
-    expect(calls.filter((url) => !url.includes("nominatim"))).toHaveLength(1);
-    expect(Number(/around:(\d+)/.exec(lastQuery)?.[1])).toBe(1500);
-    expect(result.sourceLabel).toBe(OSM_SOURCE_LABEL);
-  });
-
-  it("uses the full-radius result after a successful escalation", async () => {
+  it("does not narrow the search just because the close-in area is busy", async () => {
     const radii: number[] = [];
+    const elements = Array.from({ length: 40 }, (_, id) => node({ id: id + 1 }));
     const fetchImpl = (async (target: RequestInfo | URL, init?: RequestInit) => {
       const url = String(target);
       if (url.includes("nominatim")) return stubFetch([])(target as RequestInfo, init);
       const query = decodeURIComponent(String(init?.body ?? ""));
-      const radius = Number(/around:(\d+)/.exec(query)?.[1]);
-      radii.push(radius);
-      const elements = radius === 1500 ? [node({ id: 1 }), node({ id: 2 })] : [node({ id: 99 })];
+      radii.push(Number(/around:(\d+)/.exec(query)?.[1]));
       return new Response(JSON.stringify({ elements }), { status: 200 });
     }) as unknown as typeof fetch;
 
@@ -225,21 +205,22 @@ describe("Overpass query cost", () => {
       overpassUrl: "https://a.example/api",
     }).search(search);
 
-    expect(radii).toEqual([1500, 8047]);
-    expect(result.restaurants.map((restaurant) => restaurant.id)).toEqual(["node/99"]);
+    expect(radii).toEqual([8047]);
     expect(result.sourceLabel).toBe(OSM_SOURCE_LABEL);
   });
 
-  it("serves a thin first tier with an honest label when escalation fails", async () => {
+  it("falls back to a close-in search and says so when the full radius fails", async () => {
     let overpassCalls = 0;
+    const radii: number[] = [];
     const fetchImpl = (async (target: RequestInfo | URL, init?: RequestInit) => {
       const url = String(target);
       if (url.includes("nominatim")) return stubFetch([])(target as RequestInfo, init);
       overpassCalls += 1;
-      if (overpassCalls === 1) {
-        return new Response(JSON.stringify({ elements: [node({ id: 1 }), node({ id: 2 })] }));
-      }
-      return new Response("", { status: 504 });
+      const query = decodeURIComponent(String(init?.body ?? ""));
+      radii.push(Number(/around:(\d+)/.exec(query)?.[1]));
+      // Every endpoint fails at the full radius; the narrow retry succeeds.
+      if (radii.at(-1) === 8047) return new Response("", { status: 504 });
+      return new Response(JSON.stringify({ elements: [node({ id: 1 }), node({ id: 2 })] }));
     }) as unknown as typeof fetch;
 
     const result = await new OsmRestaurantProvider({
@@ -248,19 +229,20 @@ describe("Overpass query cost", () => {
     }).search(search);
 
     expect(result.restaurants).toHaveLength(2);
-    expect(result.sourceLabel).not.toBe(OSM_SOURCE_LABEL);
+    // A narrower search is never presented as a complete one.
     expect(result.sourceLabel).toContain("0.9 mi");
     expect(result.sourceLabel).toContain("full 5 mi radius could not be reached");
+    expect(overpassCalls).toBeGreaterThan(1);
   });
 
-  it("throws when the first tier is empty and escalation fails everywhere", async () => {
-    let overpassCalls = 0;
+  it("throws when the close-in fallback also finds nothing", async () => {
     const fetchImpl = (async (target: RequestInfo | URL, init?: RequestInit) => {
       const url = String(target);
       if (url.includes("nominatim")) return stubFetch([])(target as RequestInfo, init);
-      overpassCalls += 1;
-      if (overpassCalls === 1) return new Response(JSON.stringify({ elements: [] }));
-      return new Response("", { status: 504 });
+      const query = decodeURIComponent(String(init?.body ?? ""));
+      const radius = Number(/around:(\d+)/.exec(query)?.[1]);
+      if (radius === 8047) return new Response("", { status: 504 });
+      return new Response(JSON.stringify({ elements: [] }));
     }) as unknown as typeof fetch;
 
     await expect(
@@ -270,6 +252,7 @@ describe("Overpass query cost", () => {
       }).search(search),
     ).rejects.toThrow("All Overpass endpoints failed");
   });
+
 
   it("never asks for more than the group's radius", async () => {
     await provider([node()]).search({
@@ -281,18 +264,28 @@ describe("Overpass query cost", () => {
     expect(Number(around?.[1])).toBeLessThan(1000);
   });
 
-  it("covers polygons and eating places beyond restaurants, without a regex", async () => {
-    await provider([node()]).search(search);
-    // A regex on a tag value defeats Overpass's index and forces a scan; that
-    // constraint still holds even though the element types widened.
+  it("covers polygons, and widens the amenity set only when the radius is small", async () => {
+    // A close-in search can afford several spatial passes.
+    await provider([node()]).search({ ...search, radiusMiles: 0.5 });
     expect(lastQuery).not.toContain("~");
-    // Nodes alone missed every restaurant mapped as a building outline, which
-    // in older cities is most of them.
     expect(lastQuery).toContain('nwr["amenity"="restaurant"]');
     expect(lastQuery).toContain('nwr["amenity"="cafe"]');
     expect(lastQuery).toContain('nwr["amenity"="pub"]');
+    // Nodes alone missed every restaurant mapped as a building outline.
     expect(lastQuery).not.toContain('node["amenity"');
   });
+
+  it("asks only for restaurants once the radius is wide", async () => {
+    // Measured against a public mirror over central Boston at five miles: one
+    // clause answered in 2.7s, two took 38s, three or more returned 504. The
+    // extra clauses are what made a wide search collapse back to a one mile
+    // result, so a wide search spends its budget on restaurants alone.
+    await provider([node()]).search(search);
+    expect(lastQuery).toContain('nwr["amenity"="restaurant"]');
+    expect(lastQuery).not.toContain('"amenity"="cafe"');
+    expect(lastQuery).not.toContain('"amenity"="pub"');
+  });
+
 
   it("gives Overpass generous time regardless of our own budget", async () => {
     // Tying this to our budget once set it to 3s, at which point Overpass

@@ -106,13 +106,18 @@ absent.
 The configured Overpass endpoints share one deadline and the first valid
 response wins, so a hanging instance cannot block failover.
 
-A full five-mile query asks Overpass to sweep roughly 200 km², which the public
-instances answer unreliably, so the search runs in tiers. A cheap 1.5 kilometre
-pass goes first; only a thin result set escalates to the group's full radius.
-In a dense area the first pass already answers, and the expensive query is never
-made. If the wider query then fails, the group is given the closer results *and*
-told the full radius could not be reached — a narrower search is never presented
-as a complete one.
+A wide search is answered at the radius the group asked for. What scales with
+radius is how many kinds of eating place are asked for at once: each amenity is
+an independent spatial pass, and measured against a public mirror over central
+Boston at five miles, one pass answered in under three seconds, two took
+thirty-eight, and three or more failed outright. So a wide search asks only for
+restaurants — which fills the result ceiling on its own anywhere dense — while
+close-in searches also pick up cafes, fast food, food courts, pubs and bars
+that serve food.
+
+If the requested radius cannot be reached at all, a close-in search runs instead
+and the group is told the full radius could not be covered. A narrower search is
+never presented as a complete one.
 
 Successful searches are cached in the current server process and can be served
 stale if the upstream source later fails. Shared coordinates are cached on a
