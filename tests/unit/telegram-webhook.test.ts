@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   inboundFromTelegram,
+  normaliseTelegramMessage,
   normaliseTelegramText,
   type TelegramUpdate,
 } from "@/lib/messaging/telegram-webhook";
@@ -69,5 +70,38 @@ describe("inboundFromTelegram", () => {
         }),
       ),
     ).toBeNull();
+  });
+});
+
+describe("slash commands as invocations", () => {
+  /**
+   * Telegram only appends "@BotName" when more than one bot is in the chat, so
+   * choosing /eat from the command menu usually sends a bare "/eat". Requiring
+   * the mention meant the bot's own advertised command did nothing at all.
+   */
+  it.each(["/eat", "/help", "/status", "/eat@ViandFoodPickerBot"])(
+    "treats %s as addressed to Viand",
+    (text) => {
+      expect(normaliseTelegramMessage(text, "ViandFoodPickerBot").wasInvoked).toBe(true);
+    },
+  );
+
+  /**
+   * The protection this must not lose: with privacy mode disabled Viand sees
+   * every message in the group, including commands meant for other bots.
+   */
+  it.each(["/weather", "/weather@WeatherBot", "/roll 20"])(
+    "leaves %s alone as another bot's command",
+    (text) => {
+      expect(normaliseTelegramMessage(text, "ViandFoodPickerBot").wasInvoked).toBe(false);
+    },
+  );
+
+  it("does not treat ordinary words as an invocation", () => {
+    // "food" and "eat" parse as commands, but unprefixed they are just chatter
+    // and answering them is how a bot gets muted.
+    for (const text of ["food", "eat", "hungry"]) {
+      expect(normaliseTelegramMessage(text, "ViandFoodPickerBot").wasInvoked).toBe(false);
+    }
   });
 });

@@ -20,7 +20,8 @@
     "linq:register-webhook": "node --env-file-if-exists=.env.local scripts/register-linq-webhook.mjs",
     "telegram:register-webhook": "node --env-file-if-exists=.env.local scripts/register-telegram-webhook.mjs",
     "discord:doctor": "node --env-file-if-exists=.env.local scripts/discord-doctor.mjs",
-    "discord:register-command": "node --env-file-if-exists=.env.local scripts/register-discord-command.mjs"
+    "discord:register-command": "node --env-file-if-exists=.env.local scripts/register-discord-command.mjs",
+    "telegram:register-commands": "node --env-file-if-exists=.env.local scripts/register-telegram-commands.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

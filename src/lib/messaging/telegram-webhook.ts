@@ -1,3 +1,4 @@
+import { parseCommand } from "@/domain/commands";
 import type { InboundMessage } from "../conversation/service";
 
 /** The slice of Telegram's Update object this app consumes. */
@@ -16,11 +17,16 @@ export interface TelegramUpdate {
  * intent, so they are stripped here — leaving parseCommand to see the same
  * plain "eat" it receives from iMessage.
  *
- * wasInvoked reflects the "@BotName" mention specifically, not the leading
- * slash: with privacy mode disabled Viand receives every message in a group,
- * including slash commands addressed to *other* bots sharing the chat
- * ("/weather@WeatherBot"). Treating a bare slash as an invocation would make
- * Viand start a session on a command meant for someone else.
+ * A message counts as addressed to Viand when it either carries the "@BotName"
+ * mention, or is a slash command that Viand actually recognises.
+ *
+ * That second clause matters and is narrower than it looks. Telegram only
+ * appends "@BotName" when more than one bot is in the chat, so picking /eat
+ * from the command menu usually sends a bare "/eat" — which was being ignored,
+ * making the bot's own advertised command do nothing. Requiring the command to
+ * parse to something known keeps the original protection intact: with privacy
+ * mode disabled Viand sees every message, and "/weather" meant for another bot
+ * parses to FREEFORM and is still ignored.
  */
 export function normaliseTelegramMessage(text: string, botUsername?: string): { text: string; wasInvoked: boolean } {
   let result = text.trim();
@@ -32,8 +38,14 @@ export function normaliseTelegramMessage(text: string, botUsername?: string): { 
     result = result.replace(mention, " ");
   }
 
-  result = result.replace(/^\/(?=\S)/, "");
-  return { text: result.replace(/\s+/g, " ").trim(), wasInvoked };
+  const hadLeadingSlash = /^\/(?=\S)/.test(result);
+  result = result.replace(/^\/(?=\S)/, "").replace(/\s+/g, " ").trim();
+
+  if (!wasInvoked && hadLeadingSlash && parseCommand(result).kind !== "FREEFORM") {
+    wasInvoked = true;
+  }
+
+  return { text: result, wasInvoked };
 }
 
 export function normaliseTelegramText(text: string, botUsername?: string): string {
