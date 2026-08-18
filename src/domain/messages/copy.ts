@@ -85,6 +85,15 @@ export const REQUEST_FAILED = [
   "Try again in a moment, or send CANCEL to stop.",
 ].join("\n");
 
+/**
+ * Shown when a dietary need was stated and the listings carry no dietary data
+ * to check it against. It must read as an admission, not a recommendation: the
+ * group is being handed leads to call ahead about, not verified matches.
+ */
+export const DIETARY_UNVERIFIED =
+  "Heads up: none of these list their dietary options, so I couldn't check them " +
+  "against what you need. Worth a quick call before you go.";
+
 export const NO_OPTIONS_FOUND = [
   "I couldn't find anywhere that works for everyone's restrictions.",
   "",
@@ -208,6 +217,7 @@ export function recommendations(
   candidates: readonly Candidate[],
   needsDisclaimer: boolean,
   attribution: SearchAttribution,
+  dietaryUnverified = false,
 ): string {
   const count = candidates.length;
   const noun = `${countWord(count)} option${count === 1 ? "" : "s"}`;
@@ -233,6 +243,9 @@ export function recommendations(
   if (needsDisclaimer) {
     lines.push("");
     lines.push(ALLERGY_DISCLAIMER);
+  }
+  if (dietaryUnverified) {
+    lines.push(DIETARY_UNVERIFIED);
   }
 
   lines.push("");

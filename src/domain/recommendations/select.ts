@@ -18,6 +18,12 @@ export interface RecommendationResult {
   candidates: Candidate[];
   /** True when any member's wording indicated an allergy. Drives the disclaimer. */
   needsAllergyDisclaimer: boolean;
+  /**
+   * True when no restaurant could be *confirmed* to meet a stated dietary
+   * requirement and the options below are offered unchecked. The group must be
+   * told: an unverified option is a lead to call ahead about, not a match.
+   */
+  dietaryUnverified: boolean;
   /** How many restaurants were removed by someone's hard restriction. */
   eliminatedCount: number;
 }
@@ -66,14 +72,45 @@ export function recommend(
   // the half it is entitled to: `hard` eliminates, `soft` ranks what survives.
   const { hard, soft } = splitPreferences(preferences);
 
-  const eligible = restaurants.filter(
+  const available = (restaurant: Restaurant) =>
     // Unverified hours remain eligible, but a confirmed-closed restaurant must
     // never survive into ranking regardless of how well it otherwise matches.
-    (restaurant) =>
-      !vetoed.has(restaurant.id) &&
-      isEligibleForAll(restaurant, hard) &&
-      restaurant.openNow !== false,
+    !vetoed.has(restaurant.id) && restaurant.openNow !== false;
+
+  const confirmed = restaurants.filter(
+    (restaurant) => available(restaurant) && isEligibleForAll(restaurant, hard),
   );
+
+  /**
+   * Absence of a `diet:*` tag is missing data, not a denial. Most sources
+   * publish none — in central Boston, no restaurant carries one — so reading
+   * absence as "does not accommodate" eliminated every candidate and told any
+   * group containing a vegetarian that nothing worked for them.
+   *
+   * Confirmed matches are never diluted: this pool is consulted only when the
+   * group would otherwise get nothing at all, and what it returns is labelled
+   * unverified so nobody mistakes it for a checked answer. Every constraint the
+   * source *can* speak to — a ruled-out cuisine, a price ceiling, a distance
+   * limit, closing time — still eliminates here.
+   */
+  const dietaryRequested = hard.some((entry) => entry.requiredDiets.length > 0);
+  const useUnverified = confirmed.length === 0 && dietaryRequested;
+  const eligible = useUnverified
+    ? restaurants.filter(
+        (restaurant) =>
+          available(restaurant) &&
+          // Only listings whose source published no dietary data at all. A
+          // catalogue that states dietary facts completely is telling us no,
+          // and that must still eliminate.
+          restaurant.dietaryDataKnown === false &&
+          hard.every((entry) =>
+            hardRestrictions(restaurant, entry).every(
+              (violation) => violation.kind === "dietary",
+            ),
+          ),
+      )
+    : confirmed;
+
   const eliminatedCount = restaurants.length - eligible.length;
 
   const scored = eligible
@@ -132,6 +169,7 @@ export function recommend(
   return {
     candidates,
     needsAllergyDisclaimer: preferences.some((preference) => preference.hasAllergyConcern),
+    dietaryUnverified: useUnverified && eligible.length > 0,
     eliminatedCount,
   };
 }

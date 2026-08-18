@@ -259,3 +259,51 @@ describe("opening hours", () => {
     expect(scoreRestaurant(rated, [soften]).rating).toBe(0.75);
   });
 });
+
+describe("dietary data the source does not publish", () => {
+  /**
+   * OpenStreetMap carries `diet:*` tags for only a minority of restaurants —
+   * in central Boston, none at all. Treating that absence as "does not
+   * accommodate" eliminated every candidate, so any group containing a
+   * vegetarian was told nothing works for everyone's restrictions. That is the
+   * exact group the product exists to serve.
+   *
+   * Confirmed matches still win outright. The unverified fallback appears only
+   * when there would otherwise be nothing, because "here are places we could
+   * not check, call ahead" beats sending the group away empty.
+   */
+  const veggie = restaurant({ id: "confirmed", cuisine: "indian", accommodates: ["vegetarian"] });
+  const untagged = restaurant({ id: "untagged-a", cuisine: "italian", accommodates: [], dietaryDataKnown: false });
+  const untagged2 = restaurant({ id: "untagged-b", cuisine: "thai", accommodates: [], dietaryDataKnown: false });
+
+  it("prefers confirmed matches and does not flag them", () => {
+    const result = recommend([veggie, untagged], [preference({ dietary: ["vegetarian"] })]);
+
+    expect(result.candidates.map((c) => c.restaurant.id)).toEqual(["confirmed"]);
+    expect(result.dietaryUnverified).toBe(false);
+  });
+
+  it("offers unverified options rather than nothing when none are confirmed", () => {
+    const result = recommend([untagged, untagged2], [preference({ dietary: ["vegetarian"] })]);
+
+    expect(result.candidates.length).toBeGreaterThan(0);
+    expect(result.dietaryUnverified).toBe(true);
+  });
+
+  it("still honours non-dietary constraints in the fallback", () => {
+    // The fallback relaxes only what the source could not tell us. A cuisine
+    // someone ruled out is a stated fact and still eliminates.
+    const result = recommend(
+      [untagged, untagged2],
+      [preference({ dietary: ["vegetarian"], excludedCuisines: ["italian"] })],
+    );
+
+    expect(result.candidates.map((c) => c.restaurant.id)).toEqual(["untagged-b"]);
+    expect(result.dietaryUnverified).toBe(true);
+  });
+
+  it("does not flag anything when no dietary need was stated", () => {
+    const result = recommend([untagged, untagged2], [preference({})]);
+    expect(result.dietaryUnverified).toBe(false);
+  });
+});

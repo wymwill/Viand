@@ -85,7 +85,7 @@ async function resolveRecommendation(
     return;
   }
 
-  const { candidates, needsAllergyDisclaimer } = recommend(found.restaurants, preferences, {
+  const { candidates, needsAllergyDisclaimer, dietaryUnverified } = recommend(found.restaurants, preferences, {
     vetoedRestaurantIds: vetoedRestaurantIds(snapshot),
   });
 
@@ -102,10 +102,12 @@ async function resolveRecommendation(
   // The options message carries a maps URL only in the winner announcement, so
   // the recommendation text itself is safe to send as the chat-opening message.
   outbound.push({
-    text: copy.recommendations(candidates, needsAllergyDisclaimer, {
-      sourceLabel: found.sourceLabel,
-      resolvedLocation: found.resolvedLocation,
-    }),
+    text: copy.recommendations(
+      candidates,
+      needsAllergyDisclaimer,
+      { sourceLabel: found.sourceLabel, resolvedLocation: found.resolvedLocation },
+      dietaryUnverified,
+    ),
   });
 }
 

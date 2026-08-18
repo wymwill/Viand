@@ -82,7 +82,14 @@ shape as the demo catalogue. The group is always told which source answered.
 OSM carries useful `diet:*` tags, so halal, kosher, gluten-free, vegetarian, and
 vegan requests can be checked without inferring dietary support from cuisine.
 Only `yes` and `only` count; `limited` is rejected because a hard restriction
-must not be satisfied by “a couple of things on the menu”. OSM does not provide
+must not be satisfied by “a couple of things on the menu”.
+
+Most listings carry no dietary tags at all — in central Boston, none do — and an
+absent tag is missing data rather than a refusal. Confirmed matches are always
+preferred and are never mixed with unconfirmed ones. Only when a dietary need
+would otherwise leave the group with nothing does Viand fall back to listings it
+could not check, and it says so plainly rather than presenting them as matches.
+Every other constraint still eliminates in that fallback. OSM does not provide
 dependable ratings or prices; a listing missing either is treated as unknown and
 falls back to a completeness proxy, never scored as though it rated badly.
 

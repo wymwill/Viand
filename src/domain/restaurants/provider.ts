@@ -27,6 +27,15 @@ export interface Restaurant {
   openNow: boolean | null;
   /** Raw OSM-style hours, retained so unverified hours can still be surfaced. */
   openingHoursRaw: string | null;
+  /**
+   * Whether the source published any dietary information for this listing.
+   *
+   * Absent means "assume it did" — the curated catalogues state dietary facts
+   * completely, so a missing requirement there is a real no. Live sources set
+   * it false when they carry no `diet:*` tags at all, which is unknown rather
+   * than denial, and only that case may fall back to unverified options.
+   */
+  dietaryDataKnown?: boolean;
   /** The place's own site, when the source publishes one. */
   website?: string | null;
   phone?: string | null;

@@ -229,3 +229,16 @@ export function addressFromOsmTags(tags: Readonly<Record<string, string>>): stri
   const street = [tags["addr:housenumber"], tags["addr:street"]].filter(Boolean).join(" ");
   return [street, tags["addr:city"]].filter(Boolean).join(", ");
 }
+
+/**
+ * Whether OpenStreetMap published any dietary information for this listing.
+ *
+ * Most restaurants carry none, and an empty `accommodates` therefore means
+ * "unknown" far more often than "does not accommodate". The recommender needs
+ * to tell those apart before it eliminates somebody's only options.
+ */
+export function hasDietaryData(tags: Readonly<Record<string, string>>): boolean {
+  return Object.keys(tags).some(
+    (key) => key.startsWith("diet:") || key === "vegetarian" || key === "vegan",
+  );
+}

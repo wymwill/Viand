@@ -12,6 +12,7 @@ import {
   brandOf,
   completenessOfOsmTags,
   cuisineFromOsmTags,
+  hasDietaryData,
   isNameBrandChain,
   phoneFromOsmTags,
   websiteFromOsmTags,
@@ -397,6 +398,7 @@ export class OsmRestaurantProvider implements RestaurantProvider {
       completeness: completenessOfOsmTags(tags),
       openNow: openStatus === "open" ? true : openStatus === "closed" ? false : null,
       openingHoursRaw: tags.opening_hours ?? null,
+      dietaryDataKnown: hasDietaryData(tags),
     };
   }
 }
