@@ -1,7 +1,9 @@
 import { MockRestaurantProvider } from "@/domain/restaurants/mock-provider";
 import type { RestaurantProvider } from "@/domain/restaurants/provider";
 import { getEnv } from "../env";
+import { RedisCacheBackend, type RestaurantCacheBackend } from "./cache-backend";
 import { CachedRestaurantProvider } from "./cached-provider";
+import { UpstashRestTransport } from "../store/redis-transport";
 import { OsmRestaurantProvider } from "./osm-provider";
 
 let mockSingleton: MockRestaurantProvider | null = null;
@@ -34,6 +36,32 @@ export function getRestaurantProvider(): RestaurantProvider {
       timeoutMs: env.OSM_TIMEOUT_MS,
       maxQueryRadiusMetres: env.OSM_MAX_QUERY_RADIUS_METRES,
     }),
-    { ttlMs: env.RESTAURANT_CACHE_TTL_HOURS * 60 * 60 * 1000 },
+    {
+      ttlMs: env.RESTAURANT_CACHE_TTL_HOURS * 60 * 60 * 1000,
+      backend: restaurantCacheBackend(),
+    },
   );
+}
+
+/**
+ * A shared cache when Redis is configured, otherwise the process-local one.
+ *
+ * This matters most on serverless. Successive messages from one group land on
+ * different instances, so a process-local cache misses almost every time and
+ * each miss is a live query against a volunteer-run Overpass mirror. Sharing it
+ * turns a repeated search into one upstream call for everybody.
+ *
+ * Falling back to memory rather than failing is deliberate: unlike the session
+ * store, where partial state is worse than a delay, a missing cache costs only
+ * a slower search.
+ */
+function restaurantCacheBackend(): RestaurantCacheBackend | undefined {
+  const env = getEnv();
+  if (!env.UPSTASH_REDIS_REST_URL || !env.UPSTASH_REDIS_REST_TOKEN) return undefined;
+  try {
+    return new RedisCacheBackend(new UpstashRestTransport());
+  } catch (error) {
+    console.warn("[viand] restaurant cache falling back to memory:", error);
+    return undefined;
+  }
 }

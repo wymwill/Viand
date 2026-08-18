@@ -119,12 +119,27 @@ If the requested radius cannot be reached at all, a close-in search runs instead
 and the group is told the full radius could not be covered. A narrower search is
 never presented as a complete one.
 
-Successful searches are cached in the current server process and can be served
-stale if the upstream source later fails. Shared coordinates are cached on a
-750-metre grid, so two people sharing a location from the same block hit one
-entry, and identical simultaneous searches are coalesced into a single upstream
-request. This protects a warm process from short outages, but it is not a
-durable cross-instance cache.
+Successful searches are cached and can be served stale if the upstream source
+later fails. With `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` set the
+cache is shared across instances, which is what makes it useful on serverless:
+consecutive messages from one group land on different processes, so a
+process-local cache misses almost every time and every miss is a live query
+against a volunteer-run mirror. Without Redis it falls back to a process-local
+map — a cache outage costs a slow search, never an error, which is the opposite
+of the session store's behaviour and deliberate.
+
+Shared coordinates are cached on a 750-metre grid, so two people sharing a
+location from the same block hit one entry, and identical simultaneous searches
+are coalesced into a single upstream request.
+
+Before a demo or a busy period, warm it:
+
+```sh
+npm run cache:warm -- "Boston, MA" "Los Angeles, CA"
+```
+
+Freshness is bucketed by the hour, so warm within the hour you intend to use it;
+an older entry still survives as the stale-on-failure fallback.
 
 Nominatim and the public Overpass instances are shared volunteer services with
 usage policies and operational limits. Set an identifying `OSM_USER_AGENT`.

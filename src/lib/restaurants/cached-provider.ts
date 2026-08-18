@@ -4,6 +4,11 @@ import type {
   RestaurantSearchResult,
 } from "@/domain/restaurants/provider";
 import { parseSharedLocation, snapToGrid } from "./geo";
+import {
+  MemoryCacheBackend,
+  type CacheEntry,
+  type RestaurantCacheBackend,
+} from "./cache-backend";
 
 /**
  * Caches searches, and — more importantly — serves a stale result when the
@@ -20,23 +25,13 @@ import { parseSharedLocation, snapToGrid } from "./geo";
  * over and over.
  */
 
-interface CacheEntry {
-  result: RestaurantSearchResult;
-  storedAt: number;
-  /**
-   * Hour the result's `openNow` values were computed in. Freshness is gated on
-   * this, but lookup is not: a stale entry from an earlier hour must still be
-   * findable, because serving slightly wrong hours during an upstream outage
-   * beats telling the group there is nowhere to eat.
-   */
-  hourBucket: string;
-}
-
 export interface CacheOptions {
   /** How long a result is served without re-fetching. */
   ttlMs?: number;
-  /** Bounds memory on a long-lived process. */
+  /** Bounds memory on a long-lived process. Ignored by a shared backend. */
   maxEntries?: number;
+  /** Where entries live. Defaults to a process-local map. */
+  backend?: RestaurantCacheBackend;
   now?: () => number;
   /** Injected in tests; defaults to a warn so stale serving is visible. */
   onStale?: (error: unknown, ageMs: number) => void;
@@ -46,10 +41,9 @@ const DEFAULT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_MAX_ENTRIES = 200;
 
 export class CachedRestaurantProvider implements RestaurantProvider {
-  private readonly entries = new Map<string, CacheEntry>();
+  private readonly backend: RestaurantCacheBackend;
   private readonly inFlight = new Map<string, Promise<RestaurantSearchResult>>();
   private readonly ttlMs: number;
-  private readonly maxEntries: number;
   private readonly now: () => number;
   private readonly onStale: (error: unknown, ageMs: number) => void;
 
@@ -58,7 +52,8 @@ export class CachedRestaurantProvider implements RestaurantProvider {
     options: CacheOptions = {},
   ) {
     this.ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
-    this.maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
+    this.backend =
+      options.backend ?? new MemoryCacheBackend(options.maxEntries ?? DEFAULT_MAX_ENTRIES);
     this.now = options.now ?? (() => Date.now());
     this.onStale =
       options.onStale ??
@@ -73,7 +68,7 @@ export class CachedRestaurantProvider implements RestaurantProvider {
   async search(input: RestaurantSearchInput): Promise<RestaurantSearchResult> {
     const key = cacheKey(input);
     const bucket = hourBucket(input);
-    const cached = this.entries.get(key);
+    const cached = await this.backend.read(key);
 
     if (cached && cached.hourBucket === bucket && this.now() - cached.storedAt < this.ttlMs) {
       return cached.result;
@@ -87,7 +82,7 @@ export class CachedRestaurantProvider implements RestaurantProvider {
         const result = await this.inner.search(input);
         // An empty result is not worth caching: it is usually a bad location or a
         // half-answered query, and caching it would pin that failure in place.
-        if (result.restaurants.length > 0) this.store(key, result, bucket);
+        if (result.restaurants.length > 0) await this.store(key, result, bucket);
         return result;
       } catch (error) {
         if (cached) {
@@ -106,16 +101,15 @@ export class CachedRestaurantProvider implements RestaurantProvider {
     }
   }
 
-  private store(key: string, result: RestaurantSearchResult, hourBucket: string): void {
-    // Oldest-first eviction; insertion order is what Map iteration gives us.
-    if (this.entries.size >= this.maxEntries) {
-      const oldest = this.entries.keys().next().value;
-      if (oldest !== undefined) this.entries.delete(oldest);
-    }
-    this.entries.delete(key);
-    this.entries.set(key, { result, storedAt: this.now(), hourBucket });
+  private async store(
+    key: string,
+    result: RestaurantSearchResult,
+    hourBucket: string,
+  ): Promise<void> {
+    await this.backend.write(key, { result, storedAt: this.now(), hourBucket }, this.ttlMs);
   }
 }
+
 
 /**
  * Cached results carry an `openNow` computed at fetch time, so a result is
