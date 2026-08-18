@@ -7,7 +7,12 @@
  * registered, and the failure then looks like the bot being silent rather than
  * like a configuration error — the same shape as Telegram's privacy mode.
  *
- * Global commands can take up to an hour to appear in every guild.
+ * Global commands can take up to an hour to appear in every guild, which reads
+ * exactly like the bot being broken. Pass a guild id to register there instead:
+ * guild commands appear immediately, which is what you want while setting up or
+ * demonstrating.
+ *
+ *   npm run discord:register-command -- --guild=123456789012345678
  */
 
 const applicationId = process.env.DISCORD_APPLICATION_ID;
@@ -36,8 +41,15 @@ const command = {
   ],
 };
 
+const guildArg = process.argv.slice(2).find((arg) => arg.startsWith("--guild="));
+const guildId = guildArg?.split("=")[1];
+
+const endpoint = guildId
+  ? `https://discord.com/api/v10/applications/${applicationId}/guilds/${guildId}/commands`
+  : `https://discord.com/api/v10/applications/${applicationId}/commands`;
+
 const response = await fetch(
-  `https://discord.com/api/v10/applications/${applicationId}/commands`,
+  endpoint,
   {
     method: "POST",
     headers: {
@@ -57,4 +69,9 @@ if (!response.ok) {
 }
 
 console.log(`Registered /${body.name} (id ${body.id}) for application ${applicationId}.`);
-console.log("Global commands can take up to an hour to propagate to every guild.");
+console.log(
+  guildId
+    ? `Scoped to guild ${guildId}; it is usable there immediately.`
+    : "Global command. It can take up to an hour to appear in every guild — " +
+      "pass --guild=<id> to register one that works right away.",
+);
