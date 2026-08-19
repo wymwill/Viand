@@ -1,3 +1,4 @@
+import { logDegradation } from "../observability/log";
 import type {
   RestaurantProvider,
   RestaurantSearchInput,
@@ -23,7 +24,7 @@ export class FallbackRestaurantProvider implements RestaurantProvider {
     private readonly fallback: RestaurantProvider,
     /** Injected in tests; defaults to one warn line so silent failover is visible. */
     private readonly onFallback: (error: unknown) => void = (error) =>
-      console.warn("[viand] primary restaurant source unavailable, falling back:", error),
+      logDegradation("restaurant_source_failover", {}, error),
   ) {}
 
   async search(input: RestaurantSearchInput): Promise<RestaurantSearchResult> {

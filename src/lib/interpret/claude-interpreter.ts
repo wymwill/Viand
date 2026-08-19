@@ -1,3 +1,4 @@
+import { logDegradation } from "../observability/log";
 import Anthropic from "@anthropic-ai/sdk";
 import { DeterministicInterpreter } from "@/domain/interpret/deterministic";
 import { parsePreference } from "@/domain/preferences/rules-parser";
@@ -91,7 +92,7 @@ export class ClaudeInterpreter implements MessageInterpreter {
     this.fallback = options.fallback ?? new DeterministicInterpreter();
     this.onError =
       options.onError ??
-      ((error) => console.warn("[viand] interpreter fell back to rules:", error));
+      ((error) => logDegradation("interpreter_fell_back", {}, error));
   }
 
   async interpret(input: InterpretInput): Promise<Interpretation> {

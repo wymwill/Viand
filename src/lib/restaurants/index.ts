@@ -1,6 +1,7 @@
 import { MockRestaurantProvider } from "@/domain/restaurants/mock-provider";
 import type { RestaurantProvider } from "@/domain/restaurants/provider";
 import { getEnv } from "../env";
+import { logDegradation } from "../observability/log";
 import { RedisCacheBackend, type RestaurantCacheBackend } from "./cache-backend";
 import { CachedRestaurantProvider } from "./cached-provider";
 import { UpstashRestTransport } from "../store/redis-transport";
@@ -61,7 +62,7 @@ function restaurantCacheBackend(): RestaurantCacheBackend | undefined {
   try {
     return new RedisCacheBackend(new UpstashRestTransport());
   } catch (error) {
-    console.warn("[viand] restaurant cache falling back to memory:", error);
+    logDegradation("restaurant_cache_unavailable", { backend: "memory" }, error);
     return undefined;
   }
 }

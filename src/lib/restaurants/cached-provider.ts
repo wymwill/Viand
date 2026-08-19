@@ -3,6 +3,7 @@ import type {
   RestaurantSearchInput,
   RestaurantSearchResult,
 } from "@/domain/restaurants/provider";
+import { logDegradation } from "../observability/log";
 import { parseSharedLocation, snapToGrid } from "./geo";
 import {
   MemoryCacheBackend,
@@ -58,9 +59,9 @@ export class CachedRestaurantProvider implements RestaurantProvider {
     this.onStale =
       options.onStale ??
       ((error, ageMs) =>
-        console.warn(
-          `[viand] serving restaurants cached ${Math.round(ageMs / 3_600_000)}h ago; ` +
-            `upstream failed:`,
+        logDegradation(
+          "restaurant_served_stale",
+          { ageHours: Math.round(ageMs / 3_600_000) },
           error,
         ));
   }

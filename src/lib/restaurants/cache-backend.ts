@@ -1,4 +1,5 @@
 import type { RestaurantSearchResult } from "@/domain/restaurants/provider";
+import { logDegradation } from "../observability/log";
 import type { RedisTransport } from "../store/redis-transport";
 
 /**
@@ -75,7 +76,7 @@ export class RedisCacheBackend implements RestaurantCacheBackend {
   constructor(
     private readonly transport: RedisTransport,
     private readonly onError: (error: unknown) => void = (error) =>
-      console.warn("[viand] restaurant cache unavailable, falling through:", error),
+      logDegradation("restaurant_cache_unavailable", {}, error),
   ) {}
 
   async read(key: string): Promise<CacheEntry | null> {

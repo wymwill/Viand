@@ -1,6 +1,7 @@
 import { after, NextResponse } from "next/server";
 import * as copy from "@/domain/messages/copy";
 import { getEnv, resolveMessagingProvider } from "@/lib/env";
+import { chatRef, logDegradation } from "@/lib/observability/log";
 import { DiscordMessagingProvider } from "@/lib/messaging/discord-provider";
 import { inboundFromDiscord, type DiscordInteraction } from "@/lib/messaging/discord-webhook";
 import { verifyDiscordSignature } from "@/lib/messaging/verify-signature";
@@ -58,14 +59,22 @@ export async function POST(request: Request) {
       provider = new DiscordMessagingProvider(token);
       await processMessageWithProvider(inbound, provider);
     } catch (error) {
-      console.warn("[viand] discord interaction failed after deferral:", error);
+      logDegradation(
+        "interaction_failed",
+        { transport: "discord", chat: chatRef(inbound.linqChatId) },
+        error,
+      );
       // The placeholder would otherwise sit as "thinking…" forever; the group
       // is told the attempt failed rather than left waiting on nothing. If the
       // provider itself could not be built there is nothing to answer with.
       await (provider ?? new DiscordMessagingProvider(token))
         .sendMessage({ chatId: inbound.linqChatId, text: copy.REQUEST_FAILED })
         .catch((sendError: unknown) =>
-          console.warn("[viand] discord failure notice could not be delivered:", sendError),
+          logDegradation(
+            "reply_delivery_failed",
+            { transport: "discord", chat: chatRef(inbound.linqChatId) },
+            sendError,
+          ),
         );
     }
   });

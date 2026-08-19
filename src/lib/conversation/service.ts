@@ -6,6 +6,7 @@ import type { MessageInterpreter } from "@/domain/interpret/types";
 import * as copy from "@/domain/messages/copy";
 import { ONBOARDING } from "@/domain/messages/copy";
 import type { MessagingProvider } from "../messaging/provider";
+import { chatRef, logDegradation } from "../observability/log";
 import type { SessionStore, StoredChat } from "../store/types";
 
 /** One inbound message, normalised from a webhook or the simulator. */
@@ -120,13 +121,15 @@ export async function handleInboundMessage(
     interpretation,
     restaurants: deps.restaurants,
     now: new Date(),
+    onDegradation: (event, cause) =>
+      logDegradation(event as never, { chat: chatRef(message.linqChatId) }, cause),
   });
 
   await deps.store.save({ ...stored, snapshot });
 
   const texts = replies.map((reply) => reply.text);
-  await send(deps, message.linqChatId, texts);
-  return { processed: true, replies: texts };
+  const delivered = await send(deps, message.linqChatId, texts);
+  return { processed: true, replies: delivered };
 }
 
 /**
@@ -134,9 +137,36 @@ export async function handleInboundMessage(
  * a URL) are still sent normally here because the chat already exists — the URL
  * rule only bars the message that *creates* a chat, which onboarding handles
  * separately.
+ *
+ * A failed send is logged and swallowed rather than thrown. By this point the
+ * event is already marked processed and the new snapshot saved, so letting the
+ * error escape returned a 500 that told the transport to redeliver something
+ * already handled — and the commonest causes, a blocked bot or a chat the bot
+ * was removed from, never succeed on retry. Returning what actually went out
+ * keeps the caller honest about it.
  */
-async function send(deps: ConversationDeps, chatId: string, texts: string[]): Promise<void> {
+async function send(
+  deps: ConversationDeps,
+  chatId: string,
+  texts: string[],
+): Promise<string[]> {
+  const delivered: string[] = [];
+
   for (const text of texts) {
-    await deps.messaging.sendMessage({ chatId, text });
+    try {
+      await deps.messaging.sendMessage({ chatId, text });
+      delivered.push(text);
+    } catch (error) {
+      logDegradation(
+        "reply_delivery_failed",
+        { chat: chatRef(chatId), sent: delivered.length, total: texts.length },
+        error,
+      );
+      // Later replies in a turn read as nonsense without the earlier ones, and
+      // whatever broke the first send almost always breaks the rest.
+      break;
+    }
   }
+
+  return delivered;
 }

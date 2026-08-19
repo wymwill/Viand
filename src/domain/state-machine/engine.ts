@@ -14,6 +14,13 @@ export interface AdvanceInput {
   restaurants: RestaurantProvider;
   /** Wall clock supplied by the adapter boundary; domain code never constructs it. */
   now: Date;
+  /**
+   * Reports a degradation the group was shielded from. The domain decides that
+   * something went wrong and what to say about it; recording that fact is I/O,
+   * so it belongs to the caller. Default is a no-op, which keeps `advance`
+   * usable from a test without wiring anything.
+   */
+  onDegradation?: (event: string, cause: unknown) => void;
 }
 
 export interface AdvanceOutput {
@@ -49,7 +56,13 @@ export async function advance(input: AdvanceInput): Promise<AdvanceOutput> {
 
   for (const effect of effects) {
     if (effect.kind === "RUN_RECOMMENDATION") {
-      await resolveRecommendation(snapshot, outbound, input.restaurants, input.now);
+      await resolveRecommendation(
+        snapshot,
+        outbound,
+        input.restaurants,
+        input.now,
+        input.onDegradation,
+      );
     } else if (effect.kind === "ANNOUNCE_WINNER") {
       resolveWinner(snapshot, outbound);
     }
@@ -63,6 +76,7 @@ async function resolveRecommendation(
   outbound: OutboundIntent[],
   restaurants: RestaurantProvider,
   now: Date,
+  onDegradation?: (event: string, cause: unknown) => void,
 ): Promise<void> {
   const preferences = preferenceList(snapshot);
 
@@ -77,7 +91,7 @@ async function resolveRecommendation(
     // The group gets a friendly retry, but an operator still needs to know why
     // searches are failing — swallowing this entirely makes a broken key or a
     // rate-limited source indistinguishable from bad luck.
-    console.warn("[viand] restaurant search failed:", error);
+    onDegradation?.("restaurant_search_failed", error);
     // Keep collecting so DONE can simply be sent again once the source
     // recovers; the group's answers are still good.
     snapshot.state = "COLLECTING_PREFERENCES";
