@@ -20,7 +20,7 @@ const fraunces = Fraunces({
 export const metadata: Metadata = {
   title: "Viand — find where to eat, together",
   description:
-    "A Linq-powered restaurant picker that lives in the group chat. It reads the thread, filters on everyone's constraints, and returns three places worth voting on.",
+    "A restaurant picker that lives in the group chat. It reads the thread, treats everyone's restrictions as constraints rather than preferences, and returns a shortlist worth voting on.",
   icons: {
     icon: "/brand/viand-icon.png",
     apple: "/brand/viand-logo.png",

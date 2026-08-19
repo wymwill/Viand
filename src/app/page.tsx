@@ -1,31 +1,18 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
-import type { ViandNumber } from "@/app/api/number/route";
 import ChatConsole from "@/components/ChatConsole";
-import NumberDialog from "@/components/NumberDialog";
 import Reveal from "@/components/Reveal";
 import { PhoneCards, PhoneThread, PhoneVote } from "@/components/PhoneMocks";
 
+/**
+ * Where someone can actually reach the bot today. The page used to advertise a
+ * phone number, which in a deployment without Linq credentials rendered the
+ * placeholder "(555) 555-0123" — a fake number presented as the way in.
+ */
+const TELEGRAM_URL = "https://t.me/ViandFoodPickerBot";
+
 export default function Home() {
-  const [number, setNumber] = useState<ViandNumber>({
-    display: "(555) 555-0123",
-    e164: "+15555550123",
-  });
-  const [dialogOpen, setDialogOpen] = useState(false);
-
-  useEffect(() => {
-    void fetch("/api/number", { cache: "no-store" })
-      .then((response) => response.json() as Promise<ViandNumber>)
-      .then(setNumber)
-      .catch(() => {
-        /* Keep the configured fallback already in state. */
-      });
-  }, []);
-
-  const openDialog = () => setDialogOpen(true);
-
   return (
     <>
       <a className="skip-link" href="#simulator">
@@ -46,10 +33,9 @@ export default function Home() {
           </nav>
 
           <div className="nav-end">
-            <span className="nav-number">{number.display}</span>
-            <button className="btn btn-primary btn-sm" type="button" onClick={openDialog}>
-              Text Viand
-            </button>
+            <a className="btn btn-primary btn-sm" href={TELEGRAM_URL}>
+              Add on Telegram
+            </a>
           </div>
         </div>
       </header>
@@ -70,21 +56,21 @@ export default function Home() {
               </h1>
               <p className="lede">
                 Viand sits in your group chat. Tell it roughly where you are and what
-                everyone’s feeling, and it comes back with three spots — then counts
+                everyone’s feeling, and it comes back with a short list — then counts
                 the votes so nobody has to.
               </p>
 
               <div className="hero-actions">
-                <button className="btn btn-primary" type="button" onClick={openDialog}>
-                  Text Viand
-                </button>
+                <a className="btn btn-primary" href={TELEGRAM_URL}>
+                  Add on Telegram
+                </a>
                 <a className="btn btn-ghost" href="#discovery">
                   See how it works
                 </a>
               </div>
 
               <p className="hero-note">
-                Text <strong>{number.display}</strong> — no app, no signup.
+                Add <strong>@ViandFoodPickerBot</strong> to a group — no signup.
               </p>
 
               <ol className="flow" aria-label="How Viand works">
@@ -130,7 +116,7 @@ export default function Home() {
         <section className="trust">
           <Reveal className="wrap trust-inner stagger">
             <span>Real places from OpenStreetMap</span>
-            <span>Works in iMessage</span>
+            <span>Works in Telegram and Discord</span>
             <span>Reads plain English</span>
             <span>Nothing to install</span>
           </Reveal>
@@ -155,7 +141,7 @@ export default function Home() {
               <ul className="checklist">
                 <li>
                   <b>Right in your thread</b>
-                  <span>A real iMessage number, not a bot account or an invite link.</span>
+                  <span>In the Telegram or Discord group you already argue in.</span>
                 </li>
                 <li>
                   <b>Just talk normally</b>
@@ -179,19 +165,20 @@ export default function Home() {
             <Reveal className="feature-copy">
               <p className="eyebrow light">The shortlist</p>
               <h2 className="section-title light">
-                Three options.
+                Five options.
                 <br />
-                <em>Not three hundred.</em>
+                <em>Not five hundred.</em>
               </h2>
               <p className="lead light">
                 A search box hands you a list and a brand new problem. Viand hands you
                 a shortlist your group can actually agree on — close enough to walk
-                to, cheap enough to say yes to, open when you want it.
+                to, cheap enough to say yes to, and workable for everyone’s
+                restrictions.
               </p>
 
               <div className="band-cards stagger">
                 <article>
-                  <h3>Always three</h3>
+                  <h3>At most five</h3>
                   <p>Short enough that the thread lands on one instead of scrolling.</p>
                 </article>
                 <article>
@@ -225,7 +212,7 @@ export default function Home() {
 
               <ul className="checklist">
                 <li>
-                  <b>Reply 1, 2, or 3</b>
+                  <b>Reply with a number</b>
                   <span>That’s the whole interface. One digit.</span>
                 </li>
                 <li>
@@ -243,18 +230,14 @@ export default function Home() {
             <p className="eyebrow">Ready when you are</p>
             <h2 className="section-title">Hungry now?</h2>
             <p className="lead">
-              Text Viand and it takes it from there. Works one-on-one, and works even
-              better once it’s in the group chat.
+              Add Viand to a Telegram group and send <strong>/eat</strong>. It works
+              one-on-one, and works far better once the whole group is in.
             </p>
 
-            <button className="closer-number" type="button" onClick={openDialog}>
-              {number.display}
-            </button>
-
             <div className="hero-actions">
-              <button className="btn btn-primary" type="button" onClick={openDialog}>
-                Text Viand
-              </button>
+              <a className="btn btn-primary" href={TELEGRAM_URL}>
+                Add on Telegram
+              </a>
               <a className="btn btn-ghost" href="#simulator">
                 Try the demo first
               </a>
@@ -286,7 +269,7 @@ export default function Home() {
                 <a href="#lounge">Voting</a>
               </li>
               <li>
-                <a href="#text-viand">Text Viand</a>
+                <a href={TELEGRAM_URL}>Add on Telegram</a>
               </li>
             </ul>
           </div>
@@ -294,7 +277,7 @@ export default function Home() {
           <div>
             <h4>Good to know</h4>
             <ul>
-              <li>Text {number.display}</li>
+              <li>@ViandFoodPickerBot on Telegram</li>
               <li>Restaurants from OpenStreetMap</li>
               <li>Nothing to download</li>
             </ul>
@@ -307,12 +290,6 @@ export default function Home() {
         </div>
       </footer>
 
-      <NumberDialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        display={number.display}
-        e164={number.e164}
-      />
     </>
   );
 }
