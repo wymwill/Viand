@@ -21,7 +21,7 @@ import type { Standing } from "../voting/tally";
 export const ONBOARDING = [
   "Hey! I help groups agree on where to eat.",
   "",
-  'Add this number to your iMessage group, then say “Hey Viand.”',
+  'Add me to your group chat, then say “Hey Viand.”',
   "",
   "Send HELP anytime for instructions.",
 ].join("\n");

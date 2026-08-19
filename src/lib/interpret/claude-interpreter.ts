@@ -42,7 +42,7 @@ export interface ClaudeInterpreterOptions {
 }
 
 const SYSTEM_PROMPT = [
-  "You classify one message from a group iMessage chat where an assistant named",
+  "You classify one message from a group chat where an assistant named",
   "Viand helps the group pick a restaurant. Return only the structured object.",
   "",
   "Rules:",

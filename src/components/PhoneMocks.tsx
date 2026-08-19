@@ -18,12 +18,12 @@ function PhoneShell({ children, label }: { children: ReactNode; label: string })
 
 export function PhoneThread() {
   return (
-    <PhoneShell label="An iMessage thread in which Viand asks for an area, then for constraints, then confirms three nearby options.">
+    <PhoneShell label="A group chat thread in which Viand asks for an area, then for constraints, then confirms nearby options.">
       <div className="phone-bar">
         <span className="phone-avatar" />
         <div>
           <strong>Viand</strong>
-          <small>iMessage</small>
+          <small>Group chat</small>
         </div>
       </div>
       <div className="phone-body">
