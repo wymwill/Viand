@@ -132,14 +132,22 @@ Shared coordinates are cached on a 750-metre grid, so two people sharing a
 location from the same block hit one entry, and identical simultaneous searches
 are coalesced into a single upstream request.
 
-Before a demo or a busy period, warm it:
+Before a demo or a busy period, prove it works and warm it in one step:
 
 ```sh
-npm run cache:warm -- "Boston, MA" "Los Angeles, CA"
+npm run demo:verify -- "Boston, MA" "Los Angeles, CA"
 ```
 
-Freshness is bucketed by the hour, so warm within the hour you intend to use it;
-an older entry still survives as the stale-on-failure fallback.
+This runs the real state machine over real listings for each location — a
+location, three people wanting different things, a shortlist, votes, a winner —
+and exits non-zero if any step comes back empty. Warming alone only shows that a
+search returned rows; this shows the group actually gets a decision. It runs
+each location twice, so the second timing is what a demo-time search will cost.
+
+`npm run cache:warm` does the fetching without the decision, if that is all you
+need. Either way, freshness is bucketed by the hour, so run it within the hour
+you intend to use it; an older entry still survives as the stale-on-failure
+fallback.
 
 Nominatim and the public Overpass instances are shared volunteer services with
 usage policies and operational limits. Set an identifying `OSM_USER_AGENT`.
