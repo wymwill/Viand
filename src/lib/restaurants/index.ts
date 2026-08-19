@@ -39,6 +39,7 @@ export function getRestaurantProvider(): RestaurantProvider {
     }),
     {
       ttlMs: env.RESTAURANT_CACHE_TTL_HOURS * 60 * 60 * 1000,
+      maxResults: env.RESTAURANT_CACHE_MAX_RESULTS,
       backend: restaurantCacheBackend(),
     },
   );

@@ -74,6 +74,12 @@ const schema = z
       ),
     /** How long a search is reused before re-fetching. Restaurants move slowly. */
     RESTAURANT_CACHE_TTL_HOURS: z.coerce.number().int().positive().default(168),
+    /**
+     * Listings kept per cached search. Bounds what is written to Redis; the
+     * selection preserves dietary coverage rather than simply keeping the
+     * nearest, because constraints eliminate while distance only ranks.
+     */
+    RESTAURANT_CACHE_MAX_RESULTS: z.coerce.number().int().positive().default(25),
     NOMINATIM_URL: z.string().url().default("https://nominatim.openstreetmap.org/search"),
     /** Nominatim's usage policy requires an identifying User-Agent. */
     OSM_USER_AGENT: z.string().default("Viand/0.1 (restaurant decision bot)"),

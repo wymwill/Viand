@@ -4,6 +4,7 @@ import type {
   RestaurantSearchResult,
 } from "@/domain/restaurants/provider";
 import { logDegradation } from "../observability/log";
+import { selectForCache } from "./cache-selection";
 import { parseSharedLocation, snapToGrid } from "./geo";
 import {
   MemoryCacheBackend,
@@ -33,6 +34,12 @@ export interface CacheOptions {
   maxEntries?: number;
   /** Where entries live. Defaults to a process-local map. */
   backend?: RestaurantCacheBackend;
+  /**
+   * Caps how many listings are kept per search. Applied to what is both stored
+   * and returned, so a cache hit and a miss cannot disagree. Unset keeps
+   * everything the source returned.
+   */
+  maxResults?: number;
   now?: () => number;
   /** Injected in tests; defaults to a warn so stale serving is visible. */
   onStale?: (error: unknown, ageMs: number) => void;
@@ -45,6 +52,7 @@ export class CachedRestaurantProvider implements RestaurantProvider {
   private readonly backend: RestaurantCacheBackend;
   private readonly inFlight = new Map<string, Promise<RestaurantSearchResult>>();
   private readonly ttlMs: number;
+  private readonly maxResults: number | undefined;
   private readonly now: () => number;
   private readonly onStale: (error: unknown, ageMs: number) => void;
 
@@ -55,6 +63,7 @@ export class CachedRestaurantProvider implements RestaurantProvider {
     this.ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
     this.backend =
       options.backend ?? new MemoryCacheBackend(options.maxEntries ?? DEFAULT_MAX_ENTRIES);
+    this.maxResults = options.maxResults;
     this.now = options.now ?? (() => Date.now());
     this.onStale =
       options.onStale ??
@@ -80,7 +89,7 @@ export class CachedRestaurantProvider implements RestaurantProvider {
 
     const request = (async () => {
       try {
-        const result = await this.inner.search(input);
+        const result = this.bound(await this.inner.search(input));
         // An empty result is not worth caching: it is usually a bad location or a
         // half-answered query, and caching it would pin that failure in place.
         if (result.restaurants.length > 0) await this.store(key, result, bucket);
@@ -100,6 +109,12 @@ export class CachedRestaurantProvider implements RestaurantProvider {
     } finally {
       this.inFlight.delete(key);
     }
+  }
+
+  /** Trims a fresh result once, so stored and returned always agree. */
+  private bound(result: RestaurantSearchResult): RestaurantSearchResult {
+    if (this.maxResults === undefined) return result;
+    return { ...result, restaurants: selectForCache(result.restaurants, this.maxResults) };
   }
 
   private async store(
