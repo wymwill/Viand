@@ -24,18 +24,17 @@ strategy is allowed to see:
 <sub>15 groups, seed `20260815`, every strategy answering all fifteen.
 Reproduce with `npm run eval -- --seed=20260815 --groups=15`.</sub>
 
-The model row is the interesting one. Asked in prose to pick one restaurant for
-a group, it broke a hard dietary constraint in **seven of fifteen groups**, and
-scored worse on fairness than naive averaging. Not because it is weak, but
-because "choose the best restaurant for these people" gives it no reason to
-treat a dietary requirement as different in kind from a preference for Thai.
-Structure does the work, which is why a model is spent on interpretation here
-and never on the decision.
+The model row is the interesting one. Asked in prose to pick for a group, it
+broke a hard dietary constraint in **seven of fifteen groups** and scored worse
+on fairness than naive averaging — not because it is weak, but because "choose
+the best restaurant for these people" gives it no reason to treat a dietary
+requirement as different in kind from wanting Thai. Structure does the work, so
+a model is spent on interpretation and never on the decision.
 
-Two rules fall out of that. A dietary requirement is a **constraint**, never a
-weighted preference — the type system makes conflating the two a compile error.
-And the recommendation path is pure: no network, clock, randomness, or model,
-enforced by a test.
+Two rules follow. A dietary requirement is a **constraint**, never a weighted
+preference; the type system makes conflating them a compile error. And the
+recommendation path is pure — no network, clock, randomness or model, enforced
+by a test.
 
 Next.js 16, React 19, TypeScript strict, Vitest. Runs over Telegram, Discord,
 Slack, or iMessage via Linq.
@@ -62,10 +61,9 @@ creating a session. Once a session is running, votes, vetoes, preferences and
 
 ## Transports
 
-`MESSAGING_PROVIDER` selects the default, but each webhook route serves its own
-transport whenever that transport is configured, so one deployment can answer
-several at once. A route with no way to reply refuses rather than answering over
-a different platform.
+`MESSAGING_PROVIDER` sets the default, but each route serves its own transport
+whenever configured, so one deployment answers several at once. A route with no
+way to reply refuses rather than answering over a different platform.
 
 | Value | Transport | Cost |
 | --- | --- | --- |
@@ -75,16 +73,16 @@ a different platform.
 | `discord` | Discord slash commands | free |
 | `linq` | iMessage via Linq | per Linq's plan |
 
-Each platform fails the same way when misconfigured — silently — so there is a
-command per platform that names the specific setting that is wrong, and one that
-checks them all against the live deployment:
+Every platform fails the same way when misconfigured: silently. So each has a
+doctor command naming the offending setting, plus one that checks them all
+against the live deployment:
 
 ```sh
 APP_BASE_URL=https://your-app.vercel.app npm run transports:verify
 ```
 
 It checks credentials, registration, and that each webhook accepts a genuine
-request and rejects a forged or replayed one. Run it after rotating anything.
+request while rejecting a forged or replayed one. Run it after any rotation.
 
 **Telegram** — create the bot with [@BotFather](https://t.me/BotFather), set
 `TELEGRAM_BOT_TOKEN` and `TELEGRAM_BOT_USERNAME`, then
@@ -108,10 +106,9 @@ hold.
 **Linq** — set `LINQ_API_KEY` and `LINQ_PHONE_NUMBER`, then
 `npm run linq:register-webhook` and copy the printed secret into `.env.local`.
 
-Every inbound route verifies the raw body before parsing, in constant time.
-Slack and Linq deliveries older than five minutes are rejected: a signature does
-not expire on its own, so without a freshness window a captured request could be
-replayed indefinitely.
+Every route verifies the raw body before parsing, in constant time. Deliveries
+older than five minutes are rejected: a signature never expires on its own, so
+without a freshness window a captured request replays forever.
 
 ## Live restaurants
 
@@ -119,44 +116,40 @@ With `USE_MOCK_RESTAURANTS=false`, results come from **OpenStreetMap** —
 Nominatim for geocoding, Overpass for listings. The group is always told which
 source answered.
 
-OSM carries `diet:*` tags, so halal, kosher, gluten-free, vegetarian and vegan
-requests can be checked rather than inferred from cuisine. Only `yes` and `only`
-count; `limited` is rejected, because a hard restriction must not be satisfied
-by "a couple of things on the menu". Most listings carry no dietary tags at all,
-and an absent tag is missing data rather than a refusal — so confirmed matches
-are always preferred and never mixed with unconfirmed ones. Only when a dietary
-need would otherwise leave the group with nothing does Viand fall back to
-listings it could not check, and it says so.
+**Dietary.** OSM's `diet:*` tags let halal, kosher, gluten-free, vegetarian and
+vegan requests be checked rather than inferred from cuisine. Only `yes` and
+`only` count — `limited` must not satisfy a hard restriction. Most listings carry
+no tags at all, and absence is missing data, not refusal: confirmed matches are
+always preferred and never mixed with unconfirmed ones. Only when a dietary need
+would otherwise leave the group with nothing does Viand offer listings it could
+not check, and it says so.
 
-`opening_hours` is parsed against a subset of the OSM grammar and read in the
-restaurant's own time zone. A restaurant confirmed closed is eliminated before
-ranking; anything the subset cannot parse is reported *unverified* rather than
-guessed at.
+**Hours.** `opening_hours` is parsed against a subset of the OSM grammar, read in
+the restaurant's own time zone. Confirmed-closed is eliminated before ranking;
+anything unparseable is reported *unverified* rather than guessed at.
 
-A search is answered at the radius the group asked for. What scales with radius
-is how many kinds of eating place are asked for at once: each amenity is an
-independent spatial pass, and measured over central Boston at five miles, one
-pass answered in under three seconds, two took thirty-eight, and three or more
-failed. So a wide search asks only for restaurants; close-in searches also pick
-up cafes, fast food and pubs. If the full radius cannot be reached, a close-in
-search runs and the group is told — a narrower search is never presented as a
-complete one.
+**Radius.** Searches answer at the radius asked for. What scales is how many
+kinds of place are requested at once — each amenity is a separate spatial pass,
+and over central Boston at five miles one pass took under three seconds, two
+took thirty-eight, three or more failed. So wide searches ask only for
+restaurants; close-in ones also pick up cafes, fast food and pubs. If the full
+radius is unreachable, a close-in search runs and the group is told.
 
-The same restaurant is regularly entered twice in OSM under slightly different
+**Duplicates.** One restaurant is often entered twice under slightly different
 names. Entries within sixty metres with near-identical names are collapsed, so
-one business cannot occupy two slots on a shortlist of five.
+one business cannot take two of five slots.
 
-Nominatim and the public Overpass endpoints are volunteer-run and rate limited.
-Set an identifying `OSM_USER_AGENT`, and configure paid or self-hosted endpoints
-for sustained traffic.
+Nominatim and public Overpass endpoints are volunteer-run and rate limited. Set
+an identifying `OSM_USER_AGENT`; use paid or self-hosted endpoints for sustained
+traffic.
 
 ### Caching
 
 Searches are cached and served stale if the source later fails. With
 `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` the cache is shared
-across instances, which is what makes it useful on serverless — consecutive
-messages from one group land on different processes, so a process-local cache
-misses almost every time. A cache outage costs a slow search, never an error.
+across instances — essential on serverless, where consecutive messages from one
+group land on different processes and a local cache misses almost every time. A
+cache outage costs a slow search, never an error.
 
 Before a demo or a busy period:
 
@@ -164,12 +157,11 @@ Before a demo or a busy period:
 npm run demo:verify -- "Boston" "Los Angeles"
 ```
 
-This runs a real group decision per location over real listings — location,
-three people wanting different things, a shortlist, votes, a winner — and exits
-non-zero if any step comes back empty. Warming alone only shows a search
-returned rows. Freshness is bucketed by the hour, so run it within the hour you
-intend to use it; an older entry still survives as the stale-on-failure
-fallback. `npm run cache:warm` fetches without the decision.
+This runs a real decision per location — location, three people wanting
+different things, a shortlist, votes, a winner — and exits non-zero if any step
+comes back empty. Warming alone only proves a search returned rows. Freshness is
+hourly, so run it within the hour you need it; older entries still serve as the
+outage fallback. `npm run cache:warm` fetches without the decision.
 
 ## Optional: what a model does here
 
@@ -179,10 +171,10 @@ the deterministic parser recognises — a vote, `VETO`, `DONE`, `CANCEL`, and th
 `STOP`/`START` compliance keywords — never reaches a model, so those meanings
 never depend on inference or on an API being up.
 
-**Interpretation.** Free-text messages are also read behind a strict JSON
-schema, catching phrasings the rules parser misses ("the taco place works for
-me" → vote 2). Bounded by an input-length cap and a timeout, with retries off:
-anything slow, malformed, or low-confidence falls back to the rules.
+**Interpretation.** Free text is also read behind a strict JSON schema, catching
+phrasings the rules parser misses ("the taco place works for me" → vote 2).
+Bounded by an input-length cap and a timeout, retries off; anything slow,
+malformed or low-confidence falls back to the rules.
 
 **Cuisine mediation.** When two members want cuisines the scorer cannot bridge,
 it does not compromise — it alternates, because every option scores the same for
@@ -192,15 +184,14 @@ whoever it fails. A split group is instead asked:
 > Would japanese work for everyone?
 > Reply YES if that suits you, or NO to just see both.
 
-A proposal carries when **half the members or more** approve, and resolves as
-soon as enough people answer. The model proposes a cuisine and nothing else: it
-never sees a hard constraint, never picks a restaurant, and the same
-deterministic scorer then does what it always did. What each member actually
-said is left untouched.
+A proposal carries on **half the members or more**, resolving as soon as enough
+answer. The model proposes a cuisine and nothing else — it never sees a hard
+constraint, never picks a restaurant, and the same scorer then does what it
+always did. What each member said is left untouched.
 
-Spend is capped per chat and per day through the shared store, with atomic
-counters so the bound holds across instances. Exhausting a cap degrades to the
-deterministic parser with a logged reason, exactly as a timeout does.
+Spend is capped per chat and per day via atomic counters in the shared store, so
+the bound holds across instances. Exhausting a cap degrades to the deterministic
+parser with a logged reason, exactly as a timeout does.
 
 ## What one person can do to a group
 
@@ -224,19 +215,19 @@ catalogue — and runs three strategies against the same candidates: naive
 averaging, one unstructured model prompt, and the shipped scorer.
 
 Each synthetic member has a **latent utility vector** no strategy sees; their
-stated preference is a lossy projection of it. Satisfaction is graded against the
-latent vector, so the scorer is not measured with its own objective.
+stated preference is a lossy projection of it. Satisfaction is graded against
+that vector, so the scorer is never measured with its own objective.
 
-A call that never reaches the provider — quota, a 5xx, a timeout — is counted
-separately from one the model answered badly, and any of the former marks the run
-**not publishable**. Without that, a rate-limited run looks exactly like a model
-declining to answer, which would quietly overstate the shipped scorer.
+A call that never reached the provider — quota, 5xx, timeout — is counted apart
+from one the model answered badly, and any of the former marks the run **not
+publishable**. Otherwise a rate-limited run looks exactly like a model declining
+to answer, quietly overstating the shipped scorer.
 
 Strategy (b) needs `OPENROUTER_API_KEY`, `GEMINI_API_KEY` or
 `ANTHROPIC_API_KEY`; without one it is skipped and the report says so. The model
-that answered is named in its row, because a fairness number is not comparable
-across models. Everything else is deterministic — the corpus is a pure function
-of `--seed`, pinned by a digest in `tests/unit/eval-harness.test.ts`.
+is named in its row, since a fairness number is not comparable across models.
+The corpus is a pure function of `--seed`, pinned by a digest in
+`tests/unit/eval-harness.test.ts`.
 
 **What it does not show.** The corpus is synthetic: it measures whether the
 objective is optimised well, not whether the objective matches what real groups

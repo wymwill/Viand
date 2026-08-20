@@ -294,7 +294,8 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 28px;
+  gap: clamp(16px, 2.4vw, 28px);
+  min-width: 0;
 }
 
 .wordmark {
@@ -351,6 +352,75 @@ a {
   display: flex;
   align-items: center;
   gap: 16px;
+  flex-shrink: 0;
+}
+
+/* ---------- Platform switch (nav) ----------
+   One tray holding three options rather than three free-floating buttons, so
+   the row reads as a single control and sits on the nav's centre line. The
+   highlight rests on the first option and follows the pointer from there. */
+
+.platform-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--r-pill);
+  background: var(--surface-low);
+  box-shadow: inset 0 1px 2px rgba(11, 39, 26, 0.03);
+}
+
+.platform-switch-option {
+  --brand: var(--primary);
+  --brand-glow: rgba(11, 39, 26, 0.22);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 18px;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background 240ms var(--ease),
+    color 240ms var(--ease),
+    box-shadow 240ms var(--ease);
+}
+
+/* At rest the first option carries the highlight. */
+.platform-switch-option[data-resting] {
+  background: var(--primary);
+  color: var(--on-primary);
+  box-shadow: var(--shadow-xs);
+}
+
+/* Touch anywhere in the tray and the resting option gives the highlight up, so
+   only the option under the pointer is ever filled. The :not() keeps the first
+   option out of this when it is itself the one being pointed at — otherwise
+   this rule outweighs the hover rule below and Telegram would empty out under
+   its own pointer. */
+.platform-switch:hover .platform-switch-option[data-resting]:not(:hover),
+.platform-switch:focus-within .platform-switch-option[data-resting]:not(:focus-visible) {
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.platform-switch .platform-switch-option:hover,
+.platform-switch .platform-switch-option:focus-visible {
+  background: var(--brand);
+  color: var(--on-primary);
+  box-shadow: 0 6px 18px var(--brand-glow);
+}
+
+.platform-switch .platform-switch-option:active {
+  box-shadow: none;
 }
 
 /* ---------- Hero ---------- */
@@ -1376,6 +1446,19 @@ a {
   .nav-number {
     display: none;
   }
+  /* The wordmark and the switch are the whole header at this width, so the
+     tray tightens rather than wrapping or pushing the wordmark off-screen. */
+  .platform-switch {
+    gap: 2px;
+    padding: 3px;
+  }
+  .platform-switch-option {
+    padding: 8px 11px;
+    font-size: 12px;
+  }
+  .wordmark {
+    font-size: 22px;
+  }
   .nd-inner {
     padding: 36px 24px 28px;
   }
@@ -1434,5 +1517,19 @@ a {
   .stagger > * {
     opacity: 1;
     transform: none;
+  }
+}
+
+/* Below this the wordmark and a three-option tray are competing for one line,
+   so the tray drops to its smallest legible size rather than overflowing. */
+@media (max-width: 480px) {
+  .wordmark {
+    font-size: 20px;
+    gap: 8px;
+  }
+  .platform-switch-option {
+    padding: 7px 9px;
+    font-size: 11px;
+    letter-spacing: 0;
   }
 }

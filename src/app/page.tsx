@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import Image from "next/image";
 import ChatConsole from "@/components/ChatConsole";
 import Reveal from "@/components/Reveal";
@@ -19,22 +20,77 @@ const DISCORD_URL =
   "https://discord.com/oauth2/authorize?client_id=1538983395244249170&scope=applications.commands%20bot&permissions=2048";
 const SLACK_SETUP_URL = "https://github.com/wymwill/Viand#transports";
 
+/**
+ * `brand` is each platform's own hue pulled toward the page's palette —
+ * desaturated and darkened until it sits in a cream header without shouting,
+ * while still reading as Telegram blue, Discord blurple, Slack aubergine.
+ * All three clear 4.5:1 against `--on-primary`, which is the text they carry.
+ */
 const PLATFORMS = [
-  { name: "Telegram", href: TELEGRAM_URL, action: "Add on Telegram", note: "Talk normally" },
-  { name: "Discord", href: DISCORD_URL, action: "Add on Discord", note: "/eat command" },
-  { name: "Slack", href: SLACK_SETUP_URL, action: "Set up in Slack", note: "Self-hosted" },
+  {
+    name: "Telegram",
+    href: TELEGRAM_URL,
+    action: "Add on Telegram",
+    note: "Talk normally",
+    brand: "#24647f",
+    glow: "rgba(36, 100, 127, 0.26)",
+  },
+  {
+    name: "Discord",
+    href: DISCORD_URL,
+    action: "Add on Discord",
+    note: "/eat command",
+    brand: "#4b5390",
+    glow: "rgba(75, 83, 144, 0.26)",
+  },
+  {
+    name: "Slack",
+    href: SLACK_SETUP_URL,
+    action: "Set up in Slack",
+    note: "Self-hosted",
+    brand: "#5a2f57",
+    glow: "rgba(90, 47, 87, 0.26)",
+  },
 ] as const;
 
-function PlatformChoices({ compact = false }: { compact?: boolean }) {
+function PlatformChoices() {
   return (
     <div className="hero-actions">
       {PLATFORMS.map((platform, index) => (
         <a
           key={platform.name}
-          className={`btn ${index === 0 ? "btn-primary" : "btn-ghost"}${compact ? " btn-sm" : ""}`}
+          className={`btn ${index === 0 ? "btn-primary" : "btn-ghost"}`}
           href={platform.href}
         >
-          {compact ? platform.name : platform.action}
+          {platform.action}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The nav version is a segmented switch rather than three loose buttons: the
+ * highlight rests on Telegram and follows the pointer, so hovering an option
+ * both moves the fill onto it and tints it that platform's colour. It needs its
+ * own container — it used to borrow `.hero-actions`, whose `margin-top` pushed
+ * the row down through the header's bottom hairline.
+ */
+function PlatformSwitch() {
+  return (
+    <div className="platform-switch" role="group" aria-label="Add Viand to a group chat">
+      {PLATFORMS.map((platform, index) => (
+        <a
+          key={platform.name}
+          className="platform-switch-option"
+          href={platform.href}
+          aria-label={platform.action}
+          data-resting={index === 0 ? "" : undefined}
+          style={
+            { "--brand": platform.brand, "--brand-glow": platform.glow } as CSSProperties
+          }
+        >
+          {platform.name}
         </a>
       ))}
     </div>
@@ -62,7 +118,7 @@ export default function Home() {
           </nav>
 
           <div className="nav-end">
-            <PlatformChoices compact />
+            <PlatformSwitch />
           </div>
         </div>
       </header>
