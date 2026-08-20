@@ -17,6 +17,7 @@ import {
   phoneFromOsmTags,
   websiteFromOsmTags,
 } from "./osm-tags";
+import { dropDuplicates, type Locatable } from "./duplicates";
 import { evaluateOpeningHours } from "./opening-hours";
 
 /**
@@ -187,10 +188,11 @@ export class OsmRestaurantProvider implements RestaurantProvider {
       input.radiusMiles,
     );
 
-    const restaurants: Restaurant[] = [];
+    const located: Locatable[] = [];
     for (const element of elements) {
+      const position = coordinatesOf(element);
       const restaurant = this.normalise(element, center, input.now, input.timeZone);
-      if (!restaurant) continue;
+      if (!restaurant || !position) continue;
       if (restaurant.distanceMiles > input.radiusMiles) continue;
       if (
         input.maxPriceLevel != null &&
@@ -198,9 +200,12 @@ export class OsmRestaurantProvider implements RestaurantProvider {
         restaurant.priceLevel > input.maxPriceLevel
       ) continue;
       if (input.openNowOnly && restaurant.openNow !== true) continue;
-      restaurants.push(restaurant);
+      located.push({ restaurant, position });
     }
 
+    // OpenStreetMap has no unique-business key, so one restaurant entered twice
+    // by different contributors reaches the group as two of its five options.
+    const restaurants = dropDuplicates(located);
     restaurants.sort((a, b) => a.distanceMiles - b.distanceMiles);
 
     return {

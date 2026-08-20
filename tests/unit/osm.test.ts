@@ -4,14 +4,28 @@ import { OsmRestaurantProvider, shortLocationLabel } from "@/lib/restaurants/osm
 
 const CENTER = { lat: 37.8715, lon: -122.273 };
 
+/**
+ * Distinct id means a distinct place. The provider now collapses the same
+ * restaurant entered twice, so a fixture of identically named nodes at one
+ * coordinate would be deduplicated to a single result — which is correct
+ * behaviour and a meaningless test.
+ */
 function node(overrides: Record<string, unknown> = {}) {
   const { tags, ...rest } = overrides as { tags?: Record<string, string> };
+  const id = typeof rest.id === "number" ? rest.id : 1;
   return {
     type: "node",
     id: 1,
-    lat: 37.872,
+    // Roughly 110 metres apart per id, comfortably outside the "same place"
+    // radius without leaving the search radius.
+    lat: 37.872 + id * 0.001,
     lon: -122.2735,
-    tags: { name: "Tacoria", amenity: "restaurant", cuisine: "mexican", ...tags },
+    tags: {
+      name: id === 1 ? "Tacoria" : `Tacoria ${id}`,
+      amenity: "restaurant",
+      cuisine: "mexican",
+      ...tags,
+    },
     ...rest,
   };
 }
