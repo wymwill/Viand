@@ -5,11 +5,18 @@ import { MockMessagingProvider } from "@/lib/messaging/mock-provider";
 import { chunkMessage } from "@/lib/messaging/provider";
 import { chunkForTelegram, TELEGRAM_MAX_MESSAGE_CHARS } from "@/lib/messaging/telegram-provider";
 import { chunkForDiscord, DISCORD_MAX_MESSAGE_CHARS } from "@/lib/messaging/discord-provider";
+import { chunkForSlack, SLACK_MAX_MESSAGE_CHARS } from "@/lib/messaging/slack-provider";
+import { inboundFromSlack, normaliseSlackText } from "@/lib/messaging/slack-webhook";
 import { normalisePlainMention } from "@/lib/messaging/mention";
 import { normaliseTelegramMessage } from "@/lib/messaging/telegram-webhook";
 import { inboundFromDiscord, normaliseDiscordText } from "@/lib/messaging/discord-webhook";
 import { parseCommand } from "@/domain/commands";
-import { constantTimeEqual, verifyDiscordSignature } from "@/lib/messaging/verify-signature";
+import {
+  constantTimeEqual,
+  verifyDiscordSignature,
+  verifySlackSignature,
+} from "@/lib/messaging/verify-signature";
+import { createHmac } from "node:crypto";
 import { InMemorySessionStore } from "@/lib/store/memory-store";
 import { MockRestaurantProvider } from "@/domain/restaurants/mock-provider";
 import { DeterministicInterpreter } from "@/domain/interpret/deterministic";
@@ -19,6 +26,7 @@ describe("messaging adapter conformance", () => {
     ["linq/mock", () => normalisePlainMention("@Viand pick a place")],
     ["telegram", () => normaliseTelegramMessage("/pick@ViandBot", "ViandBot")],
     ["discord", () => normaliseDiscordText("<@123> pick a place")],
+    ["slack", () => normaliseSlackText("<@U0BOT> pick a place", "U0BOT")],
   ])("normalises %s mentions before the domain", (_name, normalise) => {
     const result = normalise();
     expect(result.wasInvoked).toBe(true);
@@ -29,6 +37,7 @@ describe("messaging adapter conformance", () => {
     ["linq/mock", (text: string) => chunkMessage(text, 10_000), 10_000],
     ["telegram", chunkForTelegram, TELEGRAM_MAX_MESSAGE_CHARS],
     ["discord", chunkForDiscord, DISCORD_MAX_MESSAGE_CHARS],
+    ["slack", chunkForSlack, SLACK_MAX_MESSAGE_CHARS],
   ])("splits %s outbound messages to its declared maximum", (_name, chunk, limit) => {
     expect(chunk("x".repeat(limit + 1)).every((part) => part.length <= limit)).toBe(true);
   });
@@ -115,5 +124,100 @@ describe("plain mention normalisation", () => {
     "see support@viand.co.uk",
   ])("leaves %j untouched and uninvoked", (text) => {
     expect(normalisePlainMention(text)).toEqual({ text, wasInvoked: false });
+  });
+});
+
+describe("slack inbound", () => {
+  const envelope = (event: Record<string, unknown>, id = "Ev1") => ({
+    type: "event_callback",
+    event_id: id,
+    event: { type: "message", channel: "C123", user: "U9", ts: "1", ...event },
+  });
+
+  it("normalises a mention and reports the message as addressed to Viand", () => {
+    const inbound = inboundFromSlack(envelope({ text: "<@U0BOT> pick a place" }), "U0BOT");
+
+    expect(inbound?.text).toBe("pick a place");
+    expect(inbound?.wasInvoked).toBe(true);
+    expect(inbound?.eventId).toBe("slack:Ev1");
+  });
+
+  /**
+   * Viand's own replies arrive back through the same events feed. Without this
+   * it would read its own shortlist, answer it, and never stop.
+   */
+  it("ignores messages from bots, including its own", () => {
+    expect(inboundFromSlack(envelope({ text: "hello", bot_id: "B1" }), "U0BOT")).toBeNull();
+  });
+
+  it("ignores edits and deletions rather than treating them as new messages", () => {
+    expect(
+      inboundFromSlack(envelope({ text: "hi", subtype: "message_changed" }), "U0BOT"),
+    ).toBeNull();
+  });
+
+  it("leaves another person's mention alone and does not count it as an invocation", () => {
+    const inbound = inboundFromSlack(envelope({ text: "<@U777> what about tacos" }), "U0BOT");
+
+    expect(inbound?.wasInvoked).toBe(false);
+    expect(inbound?.text).toBe("what about tacos");
+  });
+
+  it("reads a link the way a person sees it", () => {
+    const inbound = inboundFromSlack(
+      envelope({ text: "here <https://example.test|this place>" }),
+      "U0BOT",
+    );
+
+    expect(inbound?.text).toBe("here this place");
+  });
+
+  it("treats a direct message channel as one-to-one and a channel as a group", () => {
+    expect(inboundFromSlack(envelope({ text: "hi", channel: "D1" }), "U0BOT")?.isGroup).toBe(false);
+    expect(inboundFromSlack(envelope({ text: "hi", channel: "C1" }), "U0BOT")?.isGroup).toBe(true);
+  });
+});
+
+describe("slack signature verification", () => {
+  const secret = "shhh";
+  const body = '{"type":"event_callback"}';
+  const sign = (timestamp: string, rawBody = body) =>
+    "v0=" + createHmac("sha256", secret).update(`v0:${timestamp}:${rawBody}`).digest("hex");
+
+  it("accepts a correctly signed, recent delivery", () => {
+    const now = new Date();
+    const timestamp = String(Math.floor(now.getTime() / 1000));
+
+    expect(
+      verifySlackSignature({ signingSecret: secret, signature: sign(timestamp), timestamp, rawBody: body, now }),
+    ).toBe(true);
+  });
+
+  it("rejects a tampered body", () => {
+    const now = new Date();
+    const timestamp = String(Math.floor(now.getTime() / 1000));
+
+    expect(
+      verifySlackSignature({
+        signingSecret: secret,
+        signature: sign(timestamp),
+        timestamp,
+        rawBody: '{"type":"tampered"}',
+        now,
+      }),
+    ).toBe(false);
+  });
+
+  /**
+   * A valid signature never expires on its own, so without a freshness window
+   * a captured request could be replayed forever.
+   */
+  it("rejects a correctly signed delivery that is hours old", () => {
+    const now = new Date();
+    const stale = String(Math.floor(now.getTime() / 1000) - 60 * 60 * 3);
+
+    expect(
+      verifySlackSignature({ signingSecret: secret, signature: sign(stale), timestamp: stale, rawBody: body, now }),
+    ).toBe(false);
   });
 });

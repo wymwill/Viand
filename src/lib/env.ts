@@ -25,7 +25,7 @@ const schema = z
      * Which transport actually moves messages. Leave unset to keep the legacy
      * USE_MOCK_LINQ behaviour; see resolveMessagingProvider below.
      */
-    MESSAGING_PROVIDER: z.enum(["mock", "linq", "telegram", "discord"]).optional(),
+    MESSAGING_PROVIDER: z.enum(["mock", "linq", "telegram", "discord", "slack"]).optional(),
 
     LINQ_API_KEY: z.string().optional(),
     LINQ_PHONE_NUMBER: e164.optional(),
@@ -49,6 +49,14 @@ const schema = z
     DISCORD_PUBLIC_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, "must be a 32-byte hex key").optional(),
     DISCORD_BOT_TOKEN: z.string().optional(),
     DISCORD_APPLICATION_ID: z.string().regex(/^\d+$/, "must be a numeric application id").optional(),
+
+    // Slack Events API. The signing secret verifies inbound deliveries; the
+    // bot token sends. The bot's user id is only needed to recognise a mention,
+    // which Slack renders as an id rather than a name.
+    SLACK_BOT_TOKEN: z.string().optional(),
+    SLACK_SIGNING_SECRET: z.string().optional(),
+    SLACK_BOT_USER_ID: z.string().optional(),
+    SLACK_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
 
     UPSTASH_REDIS_REST_URL: z.string().url().optional(),
     UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
@@ -158,7 +166,7 @@ const schema = z
 
 export type Env = z.infer<typeof schema>;
 
-export type MessagingProviderName = "mock" | "linq" | "telegram" | "discord";
+export type MessagingProviderName = "mock" | "linq" | "telegram" | "discord" | "slack";
 
 /**
  * Shared by the schema's own validation and by the provider factory, so the

@@ -194,6 +194,7 @@ Tunable with `AI_INTERPRETER_MAX_CALLS_PER_CHAT`,
 | `linq` | iMessage via Linq | per Linq's plan |
 | `discord` | Discord slash commands | free |
 | `telegram` | Telegram Bot API | free, no per-message fee |
+| `slack` | Slack Events API | free |
 
 Leave it unset to keep the older behaviour: `USE_MOCK_LINQ=true` means `mock`,
 `false` means `linq`. Credentials are only required for the transport actually

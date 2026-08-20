@@ -6,11 +6,40 @@ import Reveal from "@/components/Reveal";
 import { PhoneCards, PhoneThread, PhoneVote } from "@/components/PhoneMocks";
 
 /**
- * Where someone can actually reach the bot today. The page used to advertise a
- * phone number, which in a deployment without Linq credentials rendered the
- * placeholder "(555) 555-0123" — a fake number presented as the way in.
+ * Every way in, in the order they are worth trying.
+ *
+ * The page used to advertise a phone number, which in a deployment without Linq
+ * credentials rendered the placeholder "(555) 555-0123" — a fake number offered
+ * as the way in. So each entry here points at something that actually exists:
+ * Telegram and Discord are live installs, and Slack is honestly labelled as
+ * needing its own app, because there is no hosted Slack workspace to join.
  */
 const TELEGRAM_URL = "https://t.me/ViandFoodPickerBot";
+const DISCORD_URL =
+  "https://discord.com/oauth2/authorize?client_id=1538983395244249170&scope=applications.commands%20bot&permissions=2048";
+const SLACK_SETUP_URL = "https://github.com/wymwill/Viand#choosing-a-messaging-transport";
+
+const PLATFORMS = [
+  { name: "Telegram", href: TELEGRAM_URL, action: "Add on Telegram", note: "Talk normally" },
+  { name: "Discord", href: DISCORD_URL, action: "Add on Discord", note: "/eat command" },
+  { name: "Slack", href: SLACK_SETUP_URL, action: "Set up in Slack", note: "Self-hosted" },
+] as const;
+
+function PlatformChoices({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className="hero-actions">
+      {PLATFORMS.map((platform, index) => (
+        <a
+          key={platform.name}
+          className={`btn ${index === 0 ? "btn-primary" : "btn-ghost"}${compact ? " btn-sm" : ""}`}
+          href={platform.href}
+        >
+          {compact ? platform.name : platform.action}
+        </a>
+      ))}
+    </div>
+  );
+}
 
 export default function Home() {
   return (
@@ -33,9 +62,7 @@ export default function Home() {
           </nav>
 
           <div className="nav-end">
-            <a className="btn btn-primary btn-sm" href={TELEGRAM_URL}>
-              Add on Telegram
-            </a>
+            <PlatformChoices compact />
           </div>
         </div>
       </header>
@@ -60,17 +87,13 @@ export default function Home() {
                 the votes so nobody has to.
               </p>
 
-              <div className="hero-actions">
-                <a className="btn btn-primary" href={TELEGRAM_URL}>
-                  Add on Telegram
-                </a>
-                <a className="btn btn-ghost" href="#discovery">
-                  See how it works
-                </a>
-              </div>
+              <PlatformChoices />
+              <p className="hero-note">
+                <a href="#discovery">See how it works</a>
+              </p>
 
               <p className="hero-note">
-                Add <strong>@ViandFoodPickerBot</strong> to a group — no signup.
+                Works in the group chat you already use — no signup.
               </p>
 
               <ol className="flow" aria-label="How Viand works">
@@ -116,7 +139,7 @@ export default function Home() {
         <section className="trust">
           <Reveal className="wrap trust-inner stagger">
             <span>Real places from OpenStreetMap</span>
-            <span>Works in Telegram and Discord</span>
+            <span>Works in Telegram, Discord and Slack</span>
             <span>Reads plain English</span>
             <span>Nothing to install</span>
           </Reveal>
@@ -141,7 +164,7 @@ export default function Home() {
               <ul className="checklist">
                 <li>
                   <b>Right in your thread</b>
-                  <span>In the Telegram or Discord group you already argue in.</span>
+                  <span>In the Telegram, Discord or Slack group you already argue in.</span>
                 </li>
                 <li>
                   <b>Just talk normally</b>
@@ -230,18 +253,14 @@ export default function Home() {
             <p className="eyebrow">Ready when you are</p>
             <h2 className="section-title">Hungry now?</h2>
             <p className="lead">
-              Add Viand to a Telegram group and send <strong>/eat</strong>. It works
-              one-on-one, and works far better once the whole group is in.
+              Add Viand to a group and send <strong>/eat</strong>. It works one-on-one,
+              and works far better once the whole group is in.
             </p>
 
-            <div className="hero-actions">
-              <a className="btn btn-primary" href={TELEGRAM_URL}>
-                Add on Telegram
-              </a>
-              <a className="btn btn-ghost" href="#simulator">
-                Try the demo first
-              </a>
-            </div>
+            <PlatformChoices />
+            <p className="hero-note">
+              <a href="#simulator">Or try the demo first</a>
+            </p>
           </Reveal>
         </section>
       </main>
@@ -271,13 +290,19 @@ export default function Home() {
               <li>
                 <a href={TELEGRAM_URL}>Add on Telegram</a>
               </li>
+              <li>
+                <a href={DISCORD_URL}>Add on Discord</a>
+              </li>
+              <li>
+                <a href={SLACK_SETUP_URL}>Set up in Slack</a>
+              </li>
             </ul>
           </div>
 
           <div>
             <h4>Good to know</h4>
             <ul>
-              <li>@ViandFoodPickerBot on Telegram</li>
+              <li>Telegram, Discord or Slack</li>
               <li>Restaurants from OpenStreetMap</li>
               <li>Nothing to download</li>
             </ul>

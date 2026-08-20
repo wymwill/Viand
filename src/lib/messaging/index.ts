@@ -3,6 +3,7 @@ import { LinqMessagingProvider } from "./linq-provider";
 import { MockMessagingProvider } from "./mock-provider";
 import { TelegramMessagingProvider } from "./telegram-provider";
 import { DiscordMessagingProvider } from "./discord-provider";
+import { SlackMessagingProvider } from "./slack-provider";
 import type { MessagingProvider } from "./provider";
 
 let mockSingleton: MockMessagingProvider | null = null;
@@ -22,6 +23,8 @@ export function getMessagingProvider(): MessagingProvider {
       return new TelegramMessagingProvider();
     case "discord":
       return new DiscordMessagingProvider();
+    case "slack":
+      return new SlackMessagingProvider();
     case "mock":
       mockSingleton ??= new MockMessagingProvider();
       return mockSingleton;
