@@ -159,11 +159,13 @@ const schema = z
       }
     }
 
-    if (env.USE_AI_INTERPRETER && !env.ANTHROPIC_API_KEY) {
+    // Either credential will do: both reach a model through the same port.
+    if (env.USE_AI_INTERPRETER && !env.ANTHROPIC_API_KEY && !env.OPENROUTER_API_KEY) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["ANTHROPIC_API_KEY"],
-        message: "ANTHROPIC_API_KEY is required when USE_AI_INTERPRETER=true",
+        path: ["OPENROUTER_API_KEY"],
+        message:
+          "OPENROUTER_API_KEY or ANTHROPIC_API_KEY is required when USE_AI_INTERPRETER=true",
       });
     }
 
