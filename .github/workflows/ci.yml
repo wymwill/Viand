@@ -6,6 +6,14 @@ on:
   pull_request:
     branches: [main]
 
+# Several pushes in quick succession used to leave every superseded run going.
+# Only the newest commit on a branch is worth verifying; cancelling the rest
+# also means a red badge always refers to current main rather than to whichever
+# stale run happened to finish last.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     runs-on: ubuntu-latest
