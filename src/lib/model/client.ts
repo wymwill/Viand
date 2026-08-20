@@ -250,12 +250,20 @@ export function createGeminiClient(
  * because every caller here already treats an unusable answer as an abstention
  * and falls back, but it is a reason to pick a model that honours schemas.
  */
+/**
+ * `maxAttempts` is the caller's call, because the trade differs by caller. An
+ * offline benchmark should wait out a rate limit — nobody is watching, and a
+ * dropped call biases a published number. A group chat is watching: retrying
+ * there multiplies the wall clock people are staring at, and a deterministic
+ * fallback is already sitting right there, so live callers pass 1.
+ */
 export function createOpenRouterClient(
   model: string,
   apiKey: string,
-  // Injectable so retry tests do not spend the real backoff.
-  baseBackoffMs: number = BASE_BACKOFF_MS,
+  options: { maxAttempts?: number; baseBackoffMs?: number } = {},
 ): ModelClient {
+  const maxAttempts = options.maxAttempts ?? MAX_ATTEMPTS;
+  const baseBackoffMs = options.baseBackoffMs ?? BASE_BACKOFF_MS;
   return {
     label: `openrouter/${model}`,
     async complete(system, prompt, timeoutMs, schema) {
@@ -280,7 +288,7 @@ export function createOpenRouterClient(
       // Rate limits here are tight enough that two calls in flight trip them
       // immediately, so retrying is what makes a run complete at all rather
       // than an optimisation.
-      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
         if (attempt > 0) await sleep(baseBackoffMs * 2 ** (attempt - 1));
 
         let response: Response;
@@ -329,7 +337,7 @@ export function createOpenRouterClient(
         return { kind: "text", text };
       }
 
-      return { kind: "unavailable", reason: `${lastReason} after ${MAX_ATTEMPTS} attempts` };
+      return { kind: "unavailable", reason: `${lastReason} after ${maxAttempts} attempts` };
     },
   };
 }

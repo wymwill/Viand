@@ -1,8 +1,8 @@
-import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it } from "vitest";
 import { parseCommand } from "@/domain/commands";
 import type { InterpretInput } from "@/domain/interpret/types";
 import type { DecisionState } from "@/domain/types";
+import type { ModelClient } from "@/lib/model/client";
 import { ClaudeInterpreter } from "@/lib/interpret/claude-interpreter";
 
 /**
@@ -40,28 +40,40 @@ function rawResponse(rawContent: unknown[]): RawResponse {
   return { rawContent };
 }
 
-/** Returns a client whose calls are driven by `handler`, plus captured arguments. */
+/**
+ * Returns a client whose calls are driven by `handler`, plus captured
+ * arguments. Stubs the shared model port rather than a vendor SDK, so these
+ * tests hold for whichever provider is configured.
+ */
 function stubClient(handler: () => unknown | RawResponse) {
-  const calls = { count: 0, requests: [] as unknown[], options: [] as unknown[] };
-  const client = {
-    messages: {
-      create: async (request: unknown, requestOptions: unknown) => {
-        calls.count += 1;
-        calls.requests.push(request);
-        calls.options.push(requestOptions);
-        const payload = handler();
-        if (typeof payload === "object" && payload != null && "rawContent" in payload) {
-          return { content: payload.rawContent };
-        }
-        const text = typeof payload === "string" ? payload : JSON.stringify(payload);
-        return { content: [{ type: "text", text }] };
-      },
+  const calls = {
+    count: 0,
+    requests: [] as unknown[],
+    options: [] as unknown[],
+  };
+  const client: ModelClient = {
+    label: "stub/test-model",
+    complete: async (system, prompt, timeoutMs, schema) => {
+      calls.count += 1;
+      calls.requests.push({ system, messages: [{ content: prompt }], schema });
+      calls.options.push({ timeout: timeoutMs });
+      const payload = handler();
+      if (typeof payload === "object" && payload != null && "rawContent" in payload) {
+        // A response shaped wrongly by the provider reads as no answer at all.
+        const blocks = (payload as RawResponse).rawContent as Array<{ text?: string }>;
+        const text = blocks.find((block) => typeof block?.text === "string")?.text;
+        return text === undefined
+          ? { kind: "abstained", reason: "no text in response" }
+          : { kind: "text", text };
+      }
+      const text = typeof payload === "string" ? payload : JSON.stringify(payload);
+      return { kind: "text", text };
     },
-  } as unknown as Anthropic;
+  };
   return { client, calls };
 }
 
-function interpreter(client: Anthropic, overrides: Record<string, unknown> = {}) {
+function interpreter(client: ModelClient, overrides: Record<string, unknown> = {}) {
   return new ClaudeInterpreter({
     client,
     model: "claude-haiku-4-5",
@@ -208,7 +220,9 @@ describe("ClaudeInterpreter", () => {
 
     expect(result.source).toBe("ai");
     expect(result.command).toEqual({ kind: "VOTE", option: 2 });
-    expect(calls.options[0]).toEqual({ timeout: 1_000, maxRetries: 0 });
+    // Retry policy is the client's now, not a per-request flag; what the
+    // interpreter still owns is the deadline it is willing to wait.
+    expect(calls.options[0]).toEqual({ timeout: 1_000 });
     const request = calls.requests[0] as { messages: Array<{ content: string }> };
     expect(request.messages[0]?.content).toContain("Sushi Ya");
     expect(request.messages[0]?.content).toContain("Taqueria Uno");

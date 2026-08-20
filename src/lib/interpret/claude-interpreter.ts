@@ -1,3 +1,4 @@
+import type { ModelClient } from "../model/client";
 import { chatRef, logDegradation } from "../observability/log";
 import type { InterpreterBudget } from "./call-budget";
 import Anthropic from "@anthropic-ai/sdk";
@@ -29,7 +30,12 @@ import type { DecisionState } from "@/domain/types";
  *    all of which stay in the conversation service.
  */
 export interface ClaudeInterpreterOptions {
-  client: Anthropic;
+  /**
+   * Any provider behind the shared port. The interpreter has no opinion about
+   * which — it needs one JSON object back, and a refusal is a fallback either
+   * way.
+   */
+  client: ModelClient;
   model: string;
   /** Per-request wall clock budget. Exceeded means fall back, not fail. */
   timeoutMs: number;
@@ -160,26 +166,18 @@ export class ClaudeInterpreter implements MessageInterpreter {
   }
 
   private async callModel(input: InterpretInput): Promise<unknown> {
-    const response = await this.options.client.messages.create(
-      {
-        model: this.options.model,
-        max_tokens: 512,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: buildUserMessage(input) }],
-        output_config: {
-          format: {
-            type: "json_schema",
-            schema: INTERPRETATION_JSON_SCHEMA,
-          },
-        },
-      },
-      // Retries would multiply the wall clock a group chat is waiting on, and a
-      // fallback is already available, so one bounded attempt is the right trade.
-      { timeout: this.options.timeoutMs, maxRetries: 0 },
+    const result = await this.options.client.complete(
+      SYSTEM_PROMPT,
+      buildUserMessage(input),
+      this.options.timeoutMs,
+      INTERPRETATION_JSON_SCHEMA as unknown as Record<string, unknown>,
     );
 
-    const text = response.content.find((block) => block.type === "text");
-    if (!text) throw new Error("interpreter response contained no text block");
-    return JSON.parse(text.text);
+    // Either kind of non-answer is the same thing here: no interpretation, so
+    // the rules parser takes over. Which vendor refused does not change that.
+    if (result.kind !== "text") {
+      throw new Error(`interpreter got no usable answer: ${result.reason}`);
+    }
+    return JSON.parse(result.text);
   }
 }

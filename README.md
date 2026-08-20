@@ -58,7 +58,8 @@ session is active the group answers normally — votes, vetoes, preferences and
 
 ## Optional: AI interpretation
 
-With `USE_AI_INTERPRETER=true` and an `ANTHROPIC_API_KEY`, free-text messages
+With `USE_AI_INTERPRETER=true` and either an `OPENROUTER_API_KEY` or an
+`ANTHROPIC_API_KEY`, free-text messages
 are also read by Claude Haiku 4.5 behind a strict JSON schema, which picks up
 phrasings the rules parser misses (“the taco place works for me” → vote 2).
 
@@ -82,8 +83,7 @@ totals collapse to within a couple of hundredths, and the ordering falls to
 distance. The group gets four of one cuisine and one of the other, decided by
 what happens to be nearby.
 
-With `USE_AI_INTERPRETER=true` and an `ANTHROPIC_API_KEY`, a split group is
-instead asked:
+With the interpreter enabled, a split group is instead asked:
 
 > You're split between korean and italian.
 > Would japanese work for everyone?
@@ -371,9 +371,10 @@ violations. A member whose hard constraint is broken scores 0, not a penalty.
 Groups a strategy declined are reported separately rather than scored as zero:
 "nothing here works for all of you" is a different outcome from a bad pick.
 
-Strategy (b) needs `GEMINI_API_KEY` or `ANTHROPIC_API_KEY`; without either it is
-skipped and the report says so, so the harness is useful with no credentials.
-Gemini is preferred when both are set — grading the shipped scorer against
+Strategy (b) needs `OPENROUTER_API_KEY`, `GEMINI_API_KEY` or
+`ANTHROPIC_API_KEY`; without one it is skipped and the report says so, so the
+harness is useful with no credentials. OpenRouter is preferred when present —
+one credential fronts every vendor, so the model becomes a config value — grading the shipped scorer against
 another vendor's model is the harder claim to wave away. The model that answered
 is named in the strategy's row, because a fairness number is not comparable
 across models. Everything else is deterministic — the corpus is a pure function

@@ -1,9 +1,9 @@
-import type Anthropic from "@anthropic-ai/sdk";
 import type {
   CuisineMediationRequest,
   CuisineMediator,
 } from "@/domain/recommendations/mediation";
 import { CUISINES, type Cuisine } from "@/domain/types";
+import type { ModelClient } from "../model/client";
 import { chatRef, logDegradation } from "../observability/log";
 import type { InterpreterBudget } from "./call-budget";
 
@@ -23,7 +23,7 @@ import type { InterpreterBudget } from "./call-budget";
  */
 
 export interface CuisineMediatorOptions {
-  readonly client: Anthropic;
+  readonly client: ModelClient;
   readonly model: string;
   readonly timeoutMs: number;
   readonly budget?: InterpreterBudget;
@@ -67,31 +67,21 @@ export class ModelCuisineMediator implements CuisineMediator {
     }
 
     try {
-      const response = await this.options.client.messages.create(
-        {
-          model: this.options.model,
-          max_tokens: 64,
-          temperature: 0,
-          system: SYSTEM_PROMPT,
-          messages: [
-            {
-              role: "user",
-              content: [
-                `They asked for: ${request.wanted.join(", ")}.`,
-                `Available nearby: ${request.available.join(", ")}.`,
-              ].join("\n"),
-            },
-          ],
-          output_config: { format: { type: "json_schema", schema: CHOICE_SCHEMA } },
-        },
-        { timeout: this.options.timeoutMs, maxRetries: 0 },
+      const result = await this.options.client.complete(
+        SYSTEM_PROMPT,
+        [
+          `They asked for: ${request.wanted.join(", ")}.`,
+          `Available nearby: ${request.available.join(", ")}.`,
+        ].join("\n"),
+        this.options.timeoutMs,
+        CHOICE_SCHEMA as unknown as Record<string, unknown>,
       );
+      if (result.kind !== "text") {
+        logDegradation("cuisine_mediation_skipped", { chat, cause: result.reason });
+        return null;
+      }
 
-      if (response.stop_reason === "max_tokens") return null;
-      const block = response.content.find((entry) => entry.type === "text");
-      if (!block) return null;
-
-      const parsed = JSON.parse(block.text) as {
+      const parsed = JSON.parse(result.text) as {
         cuisine?: unknown;
         noReasonableCompromise?: unknown;
       };

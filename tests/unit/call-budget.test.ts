@@ -3,7 +3,7 @@ import { DeterministicInterpreter } from "@/domain/interpret/deterministic";
 import { SessionStoreCallBudget, DENY_ALL_BUDGET } from "@/lib/interpret/call-budget";
 import { ClaudeInterpreter } from "@/lib/interpret/claude-interpreter";
 import { InMemorySessionStore } from "@/lib/store/memory-store";
-import type Anthropic from "@anthropic-ai/sdk";
+import type { ModelClient } from "@/lib/model/client";
 
 const LIMITS = { perChatMax: 3, perChatWindowSeconds: 60, dailyMax: 5 };
 
@@ -66,14 +66,13 @@ describe("interpreter spending caps", () => {
 describe("an interpreter that has run out of budget", () => {
   function interpreterThatWouldCallTheModel(spend: boolean) {
     let modelCalls = 0;
-    const client = {
-      messages: {
-        create: async () => {
-          modelCalls += 1;
-          throw new Error("the model should not have been reached");
-        },
+    const client: ModelClient = {
+      label: "stub/never-called",
+      complete: async () => {
+        modelCalls += 1;
+        throw new Error("the model should not have been reached");
       },
-    } as unknown as Anthropic;
+    };
 
     const interpreter = new ClaudeInterpreter({
       client,

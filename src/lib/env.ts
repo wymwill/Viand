@@ -64,8 +64,16 @@ const schema = z
     // Structured AI interpretation of free-text messages. Off by default: the
     // deterministic parser is a complete implementation on its own.
     ANTHROPIC_API_KEY: z.string().optional(),
+    /**
+     * OpenRouter fronts many vendors behind one credential, so it is preferred
+     * when present: the model becomes a config value rather than a code change
+     * and a second billing relationship.
+     */
+    OPENROUTER_API_KEY: z.string().optional(),
     USE_AI_INTERPRETER: booleanish.default(false),
     AI_INTERPRETER_MODEL: z.string().default("claude-haiku-4-5"),
+    /** Used when the credential is OpenRouter, whose model ids are namespaced. */
+    OPENROUTER_MODEL: z.string().default("anthropic/claude-haiku-4.5"),
     AI_INTERPRETER_TIMEOUT_MS: z.coerce.number().int().positive().default(4_000),
     AI_INTERPRETER_MAX_INPUT_CHARS: z.coerce.number().int().positive().default(500),
     AI_INTERPRETER_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.6),
