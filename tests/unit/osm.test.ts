@@ -11,7 +11,7 @@ const CENTER = { lat: 37.8715, lon: -122.273 };
  * behaviour and a meaningless test.
  */
 function node(overrides: Record<string, unknown> = {}) {
-  const { tags, ...rest } = overrides as { tags?: Record<string, string> };
+  const { tags, ...rest } = overrides as { tags?: Record<string, string>; id?: number };
   const id = typeof rest.id === "number" ? rest.id : 1;
   return {
     type: "node",
