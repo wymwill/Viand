@@ -203,6 +203,33 @@ selected, so a Telegram deploy needs no `LINQ_*` variables.
 The browser simulator at `/` always uses the mock runtime and never spends a
 real messaging account, whichever transport is configured.
 
+## Connect Slack
+
+1. Create the app at [api.slack.com/apps](https://api.slack.com/apps) → **Create
+   New App** → **From an app manifest**, and paste
+   [`scripts/slack-app-manifest.yaml`](scripts/slack-app-manifest.yaml). Saving
+   it makes Slack POST a `url_verification` challenge to the request URL, which
+   `/api/webhooks/slack` answers, so the URL is accepted immediately.
+2. Install it to the workspace, then copy into `.env.local`:
+   `SLACK_BOT_TOKEN` (starts `xoxb-`), `SLACK_SIGNING_SECRET`, and
+   `SLACK_BOT_USER_ID` — the bot's own `U…` id, which is what a Slack mention
+   actually contains.
+3. Check it:
+
+```sh
+npm run slack:doctor
+```
+
+4. **Invite the bot to a channel** with `/invite @Viand`. Slack sends an app
+   nothing at all from channels it is not in — the failure looks like a broken
+   bot rather than a missing invitation, which is the same shape as leaving
+   Telegram privacy mode on.
+
+The route verifies `v0:{timestamp}:{body}` against the signing secret in
+constant time, and rejects anything older than five minutes: a Slack signature
+does not expire on its own, so without a freshness window a captured request
+could be replayed indefinitely.
+
 ## Connect Linq
 
 For Discord, set `MESSAGING_PROVIDER=discord`, `DISCORD_PUBLIC_KEY`,

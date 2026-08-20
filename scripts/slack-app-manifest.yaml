@@ -1,0 +1,42 @@
+# Viand as a Slack app.
+#
+# Create it at https://api.slack.com/apps -> "Create New App" -> "From an app
+# manifest", paste this, then install it to the workspace.
+#
+# Saving the manifest makes Slack immediately POST a `url_verification`
+# challenge to request_url; /api/webhooks/slack answers it, so the URL is
+# accepted straight away rather than needing a separate verification step.
+#
+# socket_mode is deliberately off: Viand answers over HTTP, and a socket app
+# would need a long-lived process that a serverless function cannot hold.
+display_information:
+  name: Viand
+  description: Gets a group to one restaurant everyone can live with.
+  background_color: "#1f1a17"
+features:
+  bot_user:
+    display_name: Viand
+    always_online: false
+oauth_config:
+  scopes:
+    bot:
+      # Post the shortlist and the winner.
+      - chat:write
+      # Read what the group says. Without history scopes the bot receives
+      # nothing but its own mentions, which is the Slack equivalent of leaving
+      # Telegram privacy mode on — it fails as silence, not as an error.
+      - channels:history
+      - groups:history
+      - im:history
+      - app_mentions:read
+settings:
+  event_subscriptions:
+    request_url: https://viand-puce.vercel.app/api/webhooks/slack
+    bot_events:
+      - message.channels
+      - message.groups
+      - message.im
+      - app_mention
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false
