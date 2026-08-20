@@ -130,9 +130,28 @@ export function recommend(
   const chainCounts = new Map<string, number>();
   const usedCuisines = new Set<string>();
 
+  /**
+   * Cuisines somebody actually asked for.
+   *
+   * The distinct-cuisine pass exists so a group that has not agreed on
+   * anything sees a spread rather than five pizzerias. When the group *has*
+   * named a cuisine that instinct inverts: asking for Korean in Boston
+   * returned one Korean place and then filled the other four slots with
+   * Japanese, Thai, Chinese and Vietnamese, while two other Korean
+   * restaurants sat unshown. Variety is a good default, not a good answer to
+   * a stated request.
+   */
+  const requestedCuisines = new Set(soft.flatMap((member) => member.preferredCuisines));
+
   const canTake = (entry: (typeof scored)[number], maxPerChain: number, uniqueCuisine: boolean) => {
     if (picked.includes(entry)) return false;
-    if (uniqueCuisine && usedCuisines.has(entry.restaurant.cuisine)) return false;
+    if (
+      uniqueCuisine &&
+      usedCuisines.has(entry.restaurant.cuisine) &&
+      !requestedCuisines.has(entry.restaurant.cuisine)
+    ) {
+      return false;
+    }
     const chainId = entry.restaurant.chainId;
     if (chainId != null && (chainCounts.get(chainId) ?? 0) >= maxPerChain) return false;
     return true;

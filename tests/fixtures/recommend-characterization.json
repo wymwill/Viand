@@ -234,6 +234,19 @@
         }
       },
       {
+        "id": "casa-verde",
+        "explanation": "Strongest cuisine match.",
+        "score": {
+          "total": 0.8119,
+          "weakestMember": 0.854,
+          "averageMember": 0.854,
+          "cuisineMatch": 1,
+          "distance": 0.52,
+          "rating": 0.6,
+          "priceMatch": 0.75
+        }
+      },
+      {
         "id": "green-fork",
         "explanation": "Solid all-round option.",
         "score": {
@@ -269,19 +282,6 @@
           "cuisineMatch": 0,
           "distance": 0.72,
           "rating": 0.7,
-          "priceMatch": 0.75
-        }
-      },
-      {
-        "id": "noodle-house",
-        "explanation": "Solid all-round option.",
-        "score": {
-          "total": 0.4801,
-          "weakestMember": 0.516,
-          "averageMember": 0.516,
-          "cuisineMatch": 0,
-          "distance": 0.78,
-          "rating": 0.55,
           "priceMatch": 0.75
         }
       }
