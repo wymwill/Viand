@@ -24,7 +24,8 @@
     "telegram:register-commands": "node --env-file-if-exists=.env.local scripts/register-telegram-commands.mjs",
     "cache:warm": "tsx --env-file-if-exists=.env.local scripts/warm-cache.mjs",
     "demo:verify": "tsx --env-file-if-exists=.env.local scripts/verify-demo.ts",
-    "slack:doctor": "node --env-file-if-exists=.env.local scripts/slack-doctor.mjs"
+    "slack:doctor": "node --env-file-if-exists=.env.local scripts/slack-doctor.mjs",
+    "transports:verify": "node --env-file-if-exists=.env.local scripts/verify-transports.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

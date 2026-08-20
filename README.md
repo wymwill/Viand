@@ -203,6 +203,26 @@ selected, so a Telegram deploy needs no `LINQ_*` variables.
 The browser simulator at `/` always uses the mock runtime and never spends a
 real messaging account, whichever transport is configured.
 
+## Checking the transports
+
+```sh
+APP_BASE_URL=https://your-app.vercel.app npm run transports:verify
+```
+
+Checks every configured transport against the live deployment: credentials,
+registration, and whether each webhook accepts a genuine request and rejects a
+forged or replayed one. It exits non-zero on the first real problem.
+
+Each platform fails silently in its own way — Telegram with privacy mode on,
+Discord with an unset interactions URL or a bot in no servers, Slack with
+missing scopes — so none of them report an error when misconfigured. They just
+say nothing, which is indistinguishable from a broken bot. Run this after
+rotating any credential.
+
+Secrets belong in `.env.local` and in the host's environment, never in the
+repository. Rotating one means replacing it in both places and re-running the
+command above.
+
 ## Connect Slack
 
 1. Create the app at [api.slack.com/apps](https://api.slack.com/apps) → **Create
