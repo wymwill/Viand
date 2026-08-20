@@ -17,7 +17,7 @@ import { PhoneCards, PhoneThread, PhoneVote } from "@/components/PhoneMocks";
 const TELEGRAM_URL = "https://t.me/ViandFoodPickerBot";
 const DISCORD_URL =
   "https://discord.com/oauth2/authorize?client_id=1538983395244249170&scope=applications.commands%20bot&permissions=2048";
-const SLACK_SETUP_URL = "https://github.com/wymwill/Viand#choosing-a-messaging-transport";
+const SLACK_SETUP_URL = "https://github.com/wymwill/Viand#transports";
 
 const PLATFORMS = [
   { name: "Telegram", href: TELEGRAM_URL, action: "Add on Telegram", note: "Talk normally" },
