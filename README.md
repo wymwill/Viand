@@ -19,6 +19,7 @@ vectors no strategy is allowed to see:
 | Strategy | Min satisfaction (fairness) | Mean satisfaction | Hard-constraint violations |
 | --- | --- | --- | --- |
 | Naive averaging of stated preferences | 0.276 | 0.541 | 9 |
+| One unstructured prompt to Claude Haiku 4.5 | 0.206 | 0.473 | 8 |
 | **The shipped deterministic scorer** | **0.450** | **0.624** | **0** |
 
 <sub>15 groups, seed `20260815`. Reproduce with `npm run eval -- --seed=20260815 --groups=15`.
@@ -397,13 +398,28 @@ naive averaging breaks nine, because averaging a restriction with a preference i
 exactly the mistake that produces "we found somewhere great, sorry about the
 vegetarian". It also declined one group outright rather than answer badly.
 
-**What this does not show.** Strategy (b) is implemented and tested but has not
-completed a publishable run: the Gemini free tier allows 20 generate requests
-per day per model, below what a 15-group run needs once retries are counted, so
-every attempt so far has reported itself unpublishable. The comparison above is
-therefore still only against a naive baseline. And the corpus is synthetic: it
-measures whether the objective is optimised well, not whether the objective
-matches what real groups want.
+Measured over 15 groups at seed `20260815`, with strategy (b) answering all
+fifteen — the report refuses to publish a row where any call failed to land:
+
+| Strategy | Min sat. | Mean sat. | Violations | Answered |
+| --- | --- | --- | --- | --- |
+| (a) naive averaging | 0.276 | 0.541 | 9 | 15 |
+| (b) one unstructured prompt, `anthropic/claude-haiku-4.5` | 0.206 | 0.473 | 8 | 15 |
+| (c) deterministic scorer | **0.450** | **0.624** | **0** | 14 |
+
+The model is worth looking at twice. Asked in prose to pick one restaurant for a
+group, it broke a hard dietary constraint in **seven of fifteen groups** — and
+scored *worse on fairness than naive averaging*. It is not that the model is
+weak; it is that "choose the best restaurant for these people" gives it no
+reason to treat a dietary requirement as different in kind from a preference for
+Thai food. Structure is doing the work, not intelligence, which is the whole
+argument for spending a model call on interpretation and never on the decision.
+
+**What this does not show.** The corpus is synthetic: it measures whether the
+objective is optimised well, not whether the objective matches what real groups
+want. Only live use answers that. Strategy (c) also declined one group outright
+rather than break a constraint, which is counted as an abstention above, not as
+a win.
 
 ```sh
 npm run eval -- --seed=7 --groups=20 --catalogue=mock --strategies=a,c --json

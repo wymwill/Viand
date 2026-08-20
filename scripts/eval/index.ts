@@ -177,7 +177,9 @@ async function main(): Promise<void> {
         );
       }
     } else {
-      skipped.push("(b) unstructured model — no GEMINI_API_KEY or ANTHROPIC_API_KEY set");
+      skipped.push(
+        "(b) unstructured model — no OPENROUTER_API_KEY, GEMINI_API_KEY or ANTHROPIC_API_KEY set",
+      );
     }
   }
 
