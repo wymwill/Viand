@@ -38,11 +38,16 @@ const LIVE_KEY = `__viandRuntimeV${RUNTIME_VERSION}` as const;
 const SIMULATION_KEY = `__viandSimulationRuntimeV${RUNTIME_VERSION}` as const;
 
 function getLiveRuntime(): Runtime {
-  globalRuntime[LIVE_KEY] ??= {
-    store: getSessionStore(),
-    restaurants: getRestaurantProvider(),
-    interpreter: getMessageInterpreter(),
-  };
+  if (!globalRuntime[LIVE_KEY]) {
+    // The interpreter's spending caps count through the same store, so it is
+    // built from the one this runtime will actually use.
+    const store = getSessionStore();
+    globalRuntime[LIVE_KEY] = {
+      store,
+      restaurants: getRestaurantProvider(),
+      interpreter: getMessageInterpreter(store),
+    };
+  }
   return globalRuntime[LIVE_KEY];
 }
 

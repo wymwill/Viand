@@ -22,6 +22,15 @@ class FakeRedisTransport implements RedisTransport {
     return this.values.get(key) ?? null;
   }
 
+  async increment(key: string, ttlSeconds: number): Promise<number> {
+    this.expire(key);
+    const next = Number(this.values.get(key) ?? "0") + 1;
+    this.values.set(key, String(next));
+    // Only the first increment sets the window, matching Redis INCR + EXPIRE.
+    if (next === 1) this.expiresAt.set(key, this.now + ttlSeconds * 1_000);
+    return next;
+  }
+
   async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
     this.values.set(key, value);
     if (ttlSeconds === undefined) this.expiresAt.delete(key);

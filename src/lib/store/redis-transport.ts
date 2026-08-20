@@ -4,6 +4,8 @@ export interface RedisTransport {
   get(key: string): Promise<string | null>;
   set(key: string, value: string, ttlSeconds?: number): Promise<void>;
   setIfNotExists(key: string, value: string, ttlSeconds: number): Promise<boolean>;
+  /** Increments a key, setting its expiry on first use. Returns the new value. */
+  increment(key: string, ttlSeconds: number): Promise<number>;
   del(key: string): Promise<void>;
 }
 
@@ -39,6 +41,18 @@ export class UpstashRestTransport implements RedisTransport {
 
   async setIfNotExists(key: string, value: string, ttlSeconds: number): Promise<boolean> {
     return (await this.command(["SET", key, value, "NX", "EX", String(ttlSeconds)])) === "OK";
+  }
+
+  async increment(key: string, ttlSeconds: number): Promise<number> {
+    const value = await this.command(["INCR", key]);
+    if (typeof value !== "number") {
+      throw new Error("Upstash Redis INCR returned an unexpected result");
+    }
+    // Only the increment that created the key sets the window, so a fixed
+    // window cannot be pushed forward indefinitely by continued traffic —
+    // which would let a caller stay just under the cap forever.
+    if (value === 1) await this.command(["EXPIRE", key, String(ttlSeconds)]);
+    return value;
   }
 
   async del(key: string): Promise<void> {

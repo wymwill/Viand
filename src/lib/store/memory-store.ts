@@ -9,6 +9,18 @@ export class InMemorySessionStore implements SessionStore {
   private readonly chats = new Map<string, StoredChat>();
   private readonly processedEvents = new Set<string>();
   private readonly optedOut = new Set<string>();
+  private readonly counters = new Map<string, { count: number; expiresAt: number }>();
+
+  async incrementCounter(key: string, windowSeconds: number): Promise<number> {
+    const now = Date.now();
+    const existing = this.counters.get(key);
+    if (!existing || existing.expiresAt <= now) {
+      this.counters.set(key, { count: 1, expiresAt: now + windowSeconds * 1000 });
+      return 1;
+    }
+    existing.count += 1;
+    return existing.count;
+  }
 
   async load(linqChatId: string): Promise<StoredChat | null> {
     return this.chats.get(linqChatId) ?? null;

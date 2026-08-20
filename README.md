@@ -155,6 +155,35 @@ For sustained production traffic, configure `NOMINATIM_URL` and
 `OVERPASS_URL` to paid or self-hosted instances rather than relying on the
 public endpoints.
 
+## What one person can do to a group
+
+A group chat is already a trust boundary — everyone in it can read everything —
+so the answer is mostly "the group polices itself". These are the cases where
+that is not enough, and what happens in each.
+
+**Anyone in the chat may `CANCEL` a decision, including one they did not
+start.** Ownership was considered and rejected: it would mean tracking who
+started a session and then telling a group they cannot stop a bot that is
+mid-flow in their own chat. The failure mode of the open rule is someone being
+annoying; the failure mode of the closed rule is a stuck bot nobody can turn
+off.
+
+**Vetoing everything does not deadlock.** If every option is vetoed the group
+still gets an answer: the least-vetoed option wins rather than the decision
+collapsing. One person cannot force a null result by objecting to the whole
+list.
+
+**Interpreter spend is capped twice.** A per-chat window bounds a single
+runaway conversation, and a daily ceiling bounds many chats each sitting just
+under it — breadth costs money as surely as depth. Both counters are atomic and
+live in the shared store, because on serverless the instances share no memory
+and a per-process counter would bound nothing. Exhausting either cap degrades
+to the deterministic parser with a logged reason, exactly as a timeout does, so
+the group still gets an answer and only phrasing coverage is lost.
+
+Tunable with `AI_INTERPRETER_MAX_CALLS_PER_CHAT`,
+`AI_INTERPRETER_CHAT_WINDOW_SECONDS`, and `AI_INTERPRETER_MAX_CALLS_PER_DAY`.
+
 ## Choosing a messaging transport
 
 `MESSAGING_PROVIDER` selects what actually moves messages. Discord uses slash-command interactions only (no Gateway or message-content intent):

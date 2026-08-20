@@ -45,6 +45,11 @@ export interface InterpretInput {
   state: DecisionState;
   /** Names of the options on the table. Present only while voting. */
   optionNames?: readonly string[];
+  /**
+   * Which conversation this came from. Carried so spend can be bounded per
+   * chat; the interpreter itself never uses it to decide meaning.
+   */
+  chatId?: string;
 }
 
 export interface MessageInterpreter {

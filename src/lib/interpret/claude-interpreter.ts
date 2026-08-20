@@ -1,4 +1,5 @@
-import { logDegradation } from "../observability/log";
+import { chatRef, logDegradation } from "../observability/log";
+import type { InterpreterBudget } from "./call-budget";
 import Anthropic from "@anthropic-ai/sdk";
 import { DeterministicInterpreter } from "@/domain/interpret/deterministic";
 import { parsePreference } from "@/domain/preferences/rules-parser";
@@ -37,6 +38,11 @@ export interface ClaudeInterpreterOptions {
   /** Below this the model's own confidence, the rules parse wins. */
   minConfidence: number;
   fallback?: MessageInterpreter;
+  /**
+   * Bounds spend. Absent means uncapped, which is only appropriate where the
+   * caller has some other bound — never on a publicly reachable deployment.
+   */
+  budget?: InterpreterBudget;
   /** Injected in tests; defaults to a single warn line so failures are visible. */
   onError?: (error: unknown) => void;
 }
@@ -87,16 +93,32 @@ function buildUserMessage(input: InterpretInput): string {
 export class ClaudeInterpreter implements MessageInterpreter {
   private readonly fallback: MessageInterpreter;
   private readonly onError: (error: unknown) => void;
+  private readonly budget: InterpreterBudget | undefined;
 
   constructor(private readonly options: ClaudeInterpreterOptions) {
     this.fallback = options.fallback ?? new DeterministicInterpreter();
     this.onError =
       options.onError ??
       ((error) => logDegradation("interpreter_fell_back", {}, error));
+    this.budget = options.budget;
   }
 
   async interpret(input: InterpretInput): Promise<Interpretation> {
     if (!this.shouldConsultModel(input)) return this.fallback.interpret(input);
+
+    // Exhausting a cap is a degradation, not an error: the deterministic
+    // parser is a complete implementation, so the group still gets an answer
+    // and the only thing lost is phrasing coverage. Same seam a timeout uses.
+    if (this.budget) {
+      const decision = await this.budget.check(input.chatId ?? "unknown");
+      if (!decision.allowed) {
+        logDegradation("interpreter_fell_back", {
+          cause: decision.reason,
+          chat: input.chatId ? chatRef(input.chatId) : undefined,
+        });
+        return this.fallback.interpret(input);
+      }
+    }
 
     try {
       const raw = await this.callModel(input);

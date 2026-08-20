@@ -61,6 +61,14 @@ const schema = z
     AI_INTERPRETER_TIMEOUT_MS: z.coerce.number().int().positive().default(4_000),
     AI_INTERPRETER_MAX_INPUT_CHARS: z.coerce.number().int().positive().default(500),
     AI_INTERPRETER_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.6),
+    /**
+     * Spending bounds for the interpreter. Two caps: one chat cannot loop away
+     * a budget, and many chats each under their own limit cannot either. Both
+     * degrade to the deterministic parser, which answers on its own.
+     */
+    AI_INTERPRETER_MAX_CALLS_PER_CHAT: z.coerce.number().int().positive().default(30),
+    AI_INTERPRETER_CHAT_WINDOW_SECONDS: z.coerce.number().int().positive().default(3_600),
+    AI_INTERPRETER_MAX_CALLS_PER_DAY: z.coerce.number().int().positive().default(1_000),
 
     // Live restaurant data from keyless, volunteer-run OpenStreetMap services.
     USE_MOCK_RESTAURANTS: booleanish.default(true),

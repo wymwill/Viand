@@ -26,4 +26,14 @@ export interface SessionStore {
   /** Opt a member out of all messaging (STOP). Idempotent. */
   setOptedOut(memberHandle: string, optedOut: boolean): Promise<void>;
   isOptedOut(memberHandle: string): Promise<boolean>;
+  /**
+   * Increments a fixed-window counter and returns its new value.
+   *
+   * The window starts on the first increment and expires `windowSeconds`
+   * later, so it resets itself with no separate cleanup step. One atomic
+   * operation per call, mirroring `markEventProcessed`: concurrent serverless
+   * instances race a single op rather than a read-modify-write, which would
+   * let both sides through and make a spending cap advisory.
+   */
+  incrementCounter(key: string, windowSeconds: number): Promise<number>;
 }

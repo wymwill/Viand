@@ -20,6 +20,7 @@ function fakeRedis(overrides: Partial<RedisTransport> = {}) {
     get: async (key) => values.get(key) ?? null,
     set: async (key, value) => void values.set(key, value),
     setIfNotExists: async () => true,
+    increment: async () => 1,
     del: async (key) => void values.delete(key),
     ...overrides,
   };

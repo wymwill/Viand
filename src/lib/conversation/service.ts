@@ -113,6 +113,7 @@ export async function handleInboundMessage(
     command,
     state: stored.snapshot.state,
     optionNames: stored.snapshot.candidates.map((candidate) => candidate.restaurant.name),
+    chatId: message.linqChatId,
   });
 
   const { snapshot, replies } = await advance({

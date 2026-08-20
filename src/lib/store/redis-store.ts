@@ -33,6 +33,10 @@ export class RedisSessionStore implements SessionStore {
     await this.transport.set(`viand:session:${chat.linqChatId}`, JSON.stringify(chat), SESSION_TTL_SECONDS);
   }
 
+  async incrementCounter(key: string, windowSeconds: number): Promise<number> {
+    return this.transport.increment(`viand:count:${key}`, windowSeconds);
+  }
+
   async markEventProcessed(eventId: string, eventType: string): Promise<boolean> {
     return this.transport.setIfNotExists(`viand:event:${eventId}`, eventType, EVENT_TTL_SECONDS);
   }
