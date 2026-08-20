@@ -94,6 +94,44 @@ export const DIETARY_UNVERIFIED =
   "Heads up: none of these list their dietary options, so I couldn't check them " +
   "against what you need. Worth a quick call before you go.";
 
+/**
+ * Putting a compromise to the group.
+ *
+ * It has to read as a question, not a decision. The suggestion came from a
+ * model and the group has not agreed to it yet, so the wording asks rather
+ * than announces, and says plainly what happens if they decline.
+ */
+export function proposeCuisine(wanted: readonly string[], proposed: string): string {
+  const split = wanted.map(readableCuisine).join(" and ");
+  return [
+    `You're split between ${split}.`,
+    "",
+    `Would ${readableCuisine(proposed)} work for everyone?`,
+    "",
+    "Reply YES if that suits you, or NO to just see both.",
+  ].join("\n");
+}
+
+export function proposalTally(approvals: number, memberCount: number): string {
+  const needed = Math.ceil(Math.max(memberCount, 1) / 2);
+  return `${approvals} of ${needed} needed. Reply YES or NO.`;
+}
+
+export function proposalApproved(cuisine: string): string {
+  return `${readableCuisine(cuisine)} it is — finding places now.`;
+}
+
+export const PROPOSAL_REJECTED = "No problem — here's the best of what everyone asked for.";
+
+export function proposalPending(cuisine: string): string {
+  return `Still deciding: would ${readableCuisine(cuisine)} work? Reply YES or NO.`;
+}
+
+/** Cuisine keys are snake_case internally; nobody wants to read that. */
+function readableCuisine(cuisine: string): string {
+  return cuisine.replace(/_/g, " ");
+}
+
 export const NO_OPTIONS_FOUND = [
   "I couldn't find anywhere that works for everyone's restrictions.",
   "",

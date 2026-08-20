@@ -71,6 +71,39 @@ It is deliberately additive and cannot make the bot worse:
   rules parser.
 - The layer performs no side effects: it reads a message and returns a value.
 
+## Optional: AI cuisine mediation
+
+When two members ask for cuisines the scorer cannot bridge, it does not
+compromise — it alternates. `cuisineScore` awards 1.0 for an exact match, 0.85
+within a family and 0.35 otherwise, so with Korean against Italian every option
+scores about 0.54 for whoever it fails. The least-satisfied term goes flat,
+totals collapse to within a couple of hundredths, and the ordering falls to
+distance. The group gets four of one cuisine and one of the other, decided by
+what happens to be nearby.
+
+With `USE_AI_INTERPRETER=true` and an `ANTHROPIC_API_KEY`, a split group is
+instead asked:
+
+> You're split between korean and italian.
+> Would japanese work for everyone?
+> Reply YES if that suits you, or NO to just see both.
+
+A proposal carries when **half the members or more** approve it, and resolves
+the moment enough people have answered rather than waiting on the quiet ones. In
+a group of two that means one person settles it, which is what "half or more"
+means with two members.
+
+The model proposes a cuisine and nothing else. It never sees a hard constraint,
+never picks a restaurant, and cannot produce a recommendation: the group votes,
+and the same deterministic scorer then does exactly what it always did, with the
+agreed cuisine applied as something everyone now wants. What each member
+actually said is left untouched, so a later `CHANGE` still means what they meant.
+
+It is asked once per decision, only when some pair of stated cuisines has no
+family path between them, and it runs under the same spending caps as the
+interpreter. No key, no budget, a slow model, a refusal, or a suggestion nothing
+nearby serves — each of those returns the group to exactly the behaviour above.
+
 ## Optional: live restaurants
 
 With `USE_MOCK_RESTAURANTS=false`, results come from **OpenStreetMap**. A typed

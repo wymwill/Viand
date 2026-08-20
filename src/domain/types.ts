@@ -7,6 +7,8 @@
 export type DecisionState =
   | "COLLECTING_LOCATION"
   | "COLLECTING_PREFERENCES"
+  /** A compromise cuisine has been proposed and the group is answering it. */
+  | "AWAITING_CUISINE_APPROVAL"
   | "READY_TO_RECOMMEND"
   | "VOTING"
   | "COMPLETED"

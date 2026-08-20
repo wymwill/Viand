@@ -1,5 +1,6 @@
 import { advance } from "@/domain/state-machine/engine";
 import { initialSnapshot } from "@/domain/state-machine/session";
+import type { CuisineMediator } from "@/domain/recommendations/mediation";
 import type { RestaurantProvider } from "@/domain/restaurants/provider";
 import { idleDisposition, parseCommand } from "@/domain/commands";
 import type { MessageInterpreter } from "@/domain/interpret/types";
@@ -23,6 +24,8 @@ export interface InboundMessage {
 }
 
 export interface ConversationDeps {
+  /** Optional: absent means a split group behaves exactly as it did before. */
+  cuisineMediator?: CuisineMediator | null;
   store: SessionStore;
   messaging: MessagingProvider;
   restaurants: RestaurantProvider;
@@ -122,6 +125,7 @@ export async function handleInboundMessage(
     interpretation,
     restaurants: deps.restaurants,
     now: new Date(),
+    cuisineMediator: deps.cuisineMediator ?? undefined,
     onDegradation: (event, cause) =>
       logDegradation(event as never, { chat: chatRef(message.linqChatId) }, cause),
   });

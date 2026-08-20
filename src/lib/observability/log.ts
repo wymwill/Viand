@@ -26,6 +26,8 @@ export type LogEvent =
   | "restaurant_cache_unavailable"
   | "restaurant_source_failover"
   | "interpreter_fell_back"
+  | "cuisine_mediation_skipped"
+  | "cuisine_mediation_failed"
   | "reply_delivery_failed"
   | "interaction_failed";
 

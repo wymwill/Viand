@@ -1,6 +1,12 @@
 import type { Interpretation } from "../interpret/types";
 import * as copy from "../messages/copy";
+import {
+  isSplitOnCuisine,
+  statedCuisines,
+  type CuisineMediator,
+} from "../recommendations/mediation";
 import { recommend } from "../recommendations/select";
+import type { Cuisine } from "../types";
 import type { RestaurantProvider } from "../restaurants/provider";
 import { tally } from "../voting/tally";
 import { transition } from "./reducer";
@@ -14,6 +20,11 @@ export interface AdvanceInput {
   restaurants: RestaurantProvider;
   /** Wall clock supplied by the adapter boundary; domain code never constructs it. */
   now: Date;
+  /**
+   * Proposes a compromise cuisine when the group is split. Optional: without
+   * it, a split group sees exactly what it saw before.
+   */
+  cuisineMediator?: CuisineMediator;
   /**
    * Reports a degradation the group was shielded from. The domain decides that
    * something went wrong and what to say about it; recording that fact is I/O,
@@ -62,6 +73,7 @@ export async function advance(input: AdvanceInput): Promise<AdvanceOutput> {
         input.restaurants,
         input.now,
         input.onDegradation,
+        input.cuisineMediator,
       );
     } else if (effect.kind === "ANNOUNCE_WINNER") {
       resolveWinner(snapshot, outbound);
@@ -77,6 +89,7 @@ async function resolveRecommendation(
   restaurants: RestaurantProvider,
   now: Date,
   onDegradation?: (event: string, cause: unknown) => void,
+  mediator?: CuisineMediator,
 ): Promise<void> {
   const preferences = preferenceList(snapshot);
 
@@ -99,7 +112,51 @@ async function resolveRecommendation(
     return;
   }
 
-  const { candidates, needsAllergyDisclaimer, dietaryUnverified } = recommend(found.restaurants, preferences, {
+  /**
+   * A compromise is offered before ranking, not after: once the group has seen
+   * a list it has already started arguing about that list, and the question
+   * "would something else suit you all better" arrives too late to be useful.
+   *
+   * Only asked once per decision, and only when the group is split in a way the
+   * scorer cannot bridge — two cuisines in the same family already rank well
+   * against each other, so proposing there would spend a model call to change
+   * nothing.
+   */
+  if (
+    mediator &&
+    snapshot.agreedCuisine == null &&
+    snapshot.cuisineProposal == null &&
+    isSplitOnCuisine(preferences)
+  ) {
+    const wanted = statedCuisines(preferences);
+    const available = [...new Set(found.restaurants.map((restaurant) => restaurant.cuisine))];
+    let proposed: Cuisine | null = null;
+    try {
+      proposed = await mediator.propose({ wanted, available });
+    } catch (error) {
+      onDegradation?.("cuisine_mediation_failed", error);
+    }
+
+    // A proposal nobody already asked for, that something nearby actually
+    // serves. Anything else is not worth interrupting the group to ask about.
+    if (proposed && available.includes(proposed) && !wanted.includes(proposed)) {
+      snapshot.cuisineProposal = { cuisine: proposed, approvedBy: [], rejectedBy: [] };
+      snapshot.state = "AWAITING_CUISINE_APPROVAL";
+      outbound.push({ text: copy.proposeCuisine(wanted, proposed) });
+      return;
+    }
+  }
+
+  // An agreed cuisine is applied as something everyone now wants, so it lifts
+  // the least-satisfied member rather than being bolted on as an extra voice.
+  const effective = snapshot.agreedCuisine
+    ? preferences.map((preference) => ({
+        ...preference,
+        preferredCuisines: [...new Set([...preference.preferredCuisines, snapshot.agreedCuisine as Cuisine])],
+      }))
+    : preferences;
+
+  const { candidates, needsAllergyDisclaimer, dietaryUnverified } = recommend(found.restaurants, effective, {
     vetoedRestaurantIds: vetoedRestaurantIds(snapshot),
   });
 

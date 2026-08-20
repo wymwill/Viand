@@ -12,6 +12,9 @@ export type Command =
   | { kind: "VETO"; option: OptionNumber }
   /** Null when they asked for details without saying which option. */
   | { kind: "DETAILS"; option: OptionNumber | null }
+  /** Answers a proposal. Only meaningful while one is on the table. */
+  | { kind: "APPROVE" }
+  | { kind: "REJECT" }
   | { kind: "STOP" }
   | { kind: "START" }
   /** Anything that is not a command — preference text, location text, chatter. */
@@ -80,6 +83,10 @@ export function isWakePhrase(raw: string): boolean {
 
 const EXACT_ALIASES: ReadonlyArray<readonly [ReadonlySet<string>, CommandKind]> = [
   [new Set(["eat", "eats", "food"]), "EAT"],
+  // Deliberately narrow. These only mean anything while a proposal is open,
+  // and a chat is full of people saying "yeah" about something else.
+  [new Set(["yes", "yep", "yeah", "sure", "ok", "okay", "sounds good", "works", "im in", "deal"]), "APPROVE"],
+  [new Set(["no", "nope", "nah", "pass", "rather not"]), "REJECT"],
   [new Set(["help", "info", "commands", "how does this work"]), "HELP"],
   [
     new Set([

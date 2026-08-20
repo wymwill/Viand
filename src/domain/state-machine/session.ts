@@ -1,5 +1,6 @@
 import type { Command } from "../commands";
 import type { Candidate } from "../recommendations/select";
+import type { Cuisine } from "../types";
 import type { DecisionState, MemberPreference } from "../types";
 import type { Ballot } from "../voting/tally";
 
@@ -20,6 +21,45 @@ export interface SessionSnapshot {
   activeMemberIds: string[];
   candidates: Candidate[];
   ballots: Ballot[];
+  /**
+   * A compromise cuisine put to the group, and who has answered it.
+   *
+   * Held on the snapshot rather than inferred, because the answer has to
+   * survive the gap between messages: each member replies in their own
+   * message, on their own device, and any of those may be the one that reaches
+   * the majority.
+   */
+  cuisineProposal: CuisineProposal | null;
+  /**
+   * A cuisine the group agreed to try. Applied when ranking, never written back
+   * over what anybody said: `originalMessage` and the stated preferences stay
+   * exactly as given, so a later CHANGE still means what the member meant.
+   */
+  agreedCuisine: Cuisine | null;
+}
+
+export interface CuisineProposal {
+  readonly cuisine: Cuisine;
+  readonly approvedBy: readonly string[];
+  readonly rejectedBy: readonly string[];
+}
+
+/**
+ * A proposal carries when at least half the members in the session approve it.
+ *
+ * Half rather than a plurality of whoever answered: a lone yes with everyone
+ * else silent is not a group agreeing, it is one person deciding. Counting
+ * against the session's members also means the proposal resolves the moment
+ * enough people have spoken, instead of waiting on the quiet ones.
+ */
+export function proposalOutcome(
+  proposal: CuisineProposal,
+  memberCount: number,
+): "approved" | "rejected" | "undecided" {
+  const needed = Math.ceil(Math.max(memberCount, 1) / 2);
+  if (proposal.approvedBy.length >= needed) return "approved";
+  if (proposal.rejectedBy.length >= needed) return "rejected";
+  return "undecided";
 }
 
 export const DEFAULT_RADIUS_MILES = 5;
@@ -34,6 +74,8 @@ export function initialSnapshot(isGroup: boolean): SessionSnapshot {
     activeMemberIds: [],
     candidates: [],
     ballots: [],
+    cuisineProposal: null,
+    agreedCuisine: null,
   };
 }
 

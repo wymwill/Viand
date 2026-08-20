@@ -11,6 +11,7 @@ import {
 import type { MemberPreference, OptionNumber } from "../types";
 import {
   initialSnapshot,
+  proposalOutcome,
   type Effect,
   type InboundEvent,
   type OutboundIntent,
@@ -88,6 +89,8 @@ export function transition(previous: SessionSnapshot, event: InboundEvent): Tran
       return inLocation(snapshot, command, memberId);
     case "COLLECTING_PREFERENCES":
       return inPreferences(snapshot, command, memberId, event.rawText, event.preference ?? null);
+    case "AWAITING_CUISINE_APPROVAL":
+      return inApproval(snapshot, command, memberId);
     case "READY_TO_RECOMMEND":
       // Transient: the caller runs the recommendation effect and moves us on.
       return result(snapshot, [], [{ kind: "RUN_RECOMMENDATION" }]);
@@ -259,6 +262,76 @@ function maybeCloseVoting(snapshot: SessionSnapshot, forced: boolean): Transitio
     return result(snapshot, [], [{ kind: "ANNOUNCE_WINNER" }]);
   }
   return result(snapshot);
+}
+
+/**
+ * While a compromise is on the table.
+ *
+ * Anything that is not an answer to the proposal gets a reply saying what is
+ * being asked rather than being quietly swallowed — a group that does not
+ * realise it has been asked a question will sit waiting for options that are
+ * not coming.
+ */
+function inApproval(
+  snapshot: SessionSnapshot,
+  command: Command,
+  memberId: string,
+): TransitionResult {
+  const proposal = snapshot.cuisineProposal;
+  if (!proposal) {
+    // Cannot happen through the state machine, but a stored snapshot is data
+    // and data can be wrong; recover rather than trust it.
+    snapshot.state = "READY_TO_RECOMMEND";
+    return result(snapshot, [], [{ kind: "RUN_RECOMMENDATION" }]);
+  }
+
+  switch (command.kind) {
+    case "APPROVE":
+    case "REJECT": {
+      const approving = command.kind === "APPROVE";
+      // One answer each, and a change of mind replaces the earlier one.
+      const approvedBy = proposal.approvedBy.filter((id) => id !== memberId);
+      const rejectedBy = proposal.rejectedBy.filter((id) => id !== memberId);
+      const updated = {
+        cuisine: proposal.cuisine,
+        approvedBy: approving ? [...approvedBy, memberId] : approvedBy,
+        rejectedBy: approving ? rejectedBy : [...rejectedBy, memberId],
+      };
+      snapshot.cuisineProposal = updated;
+
+      const outcome = proposalOutcome(updated, snapshot.activeMemberIds.length);
+      if (outcome === "undecided") {
+        return result(snapshot, [
+          reply(copy.proposalTally(updated.approvedBy.length, snapshot.activeMemberIds.length)),
+        ]);
+      }
+
+      snapshot.agreedCuisine = outcome === "approved" ? updated.cuisine : null;
+      snapshot.cuisineProposal = null;
+      snapshot.state = "READY_TO_RECOMMEND";
+      return result(
+        snapshot,
+        [reply(outcome === "approved" ? copy.proposalApproved(updated.cuisine) : copy.PROPOSAL_REJECTED)],
+        [{ kind: "RUN_RECOMMENDATION" }],
+      );
+    }
+    case "DONE":
+      // Someone wants to move on without waiting for the rest.
+      snapshot.cuisineProposal = null;
+      snapshot.state = "READY_TO_RECOMMEND";
+      return result(snapshot, [reply(copy.PROPOSAL_REJECTED)], [{ kind: "RUN_RECOMMENDATION" }]);
+    case "CHANGE":
+      snapshot.cuisineProposal = null;
+      snapshot.agreedCuisine = null;
+      snapshot.state = "COLLECTING_PREFERENCES";
+      return result(snapshot, [reply(copy.ASK_PREFERENCES)]);
+    case "STATUS":
+      return result(snapshot, [
+        reply(copy.proposalTally(proposal.approvedBy.length, snapshot.activeMemberIds.length)),
+      ]);
+    default:
+      return result(snapshot, [reply(copy.proposalPending(proposal.cuisine))]);
+  }
 }
 
 function inTerminal(

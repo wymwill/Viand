@@ -3,18 +3,24 @@ import { MockRestaurantProvider } from "@/domain/restaurants/mock-provider";
 import type { MessageInterpreter } from "@/domain/interpret/types";
 import type { RestaurantProvider } from "@/domain/restaurants/provider";
 import { handleInboundMessage, type InboundMessage } from "@/lib/conversation/service";
-import { getMessageInterpreter } from "@/lib/interpret";
+import { getCuisineMediator, getMessageInterpreter } from "@/lib/interpret";
 import { getMessagingProvider, getMockMessagingProvider } from "@/lib/messaging";
 import type { MessagingProvider } from "@/lib/messaging/provider";
 import { getRestaurantProvider } from "@/lib/restaurants";
 import { InMemorySessionStore } from "@/lib/store/memory-store";
 import { getSessionStore } from "@/lib/store";
+import type { CuisineMediator } from "@/domain/recommendations/mediation";
 import type { SessionStore } from "@/lib/store/types";
 
 type Runtime = {
   store: SessionStore;
   restaurants: RestaurantProvider;
   interpreter: MessageInterpreter;
+  /**
+   * Built per chat, because spend is capped per chat. Absent on the simulator,
+   * which must never reach a model.
+   */
+  mediator?: (chatId: string) => CuisineMediator | null;
 };
 
 /**
@@ -27,7 +33,7 @@ type Runtime = {
  * undefined property, not as a load error. Versioning the key makes an
  * incompatible cache entry unreachable instead of subtly wrong.
  */
-const RUNTIME_VERSION = 2;
+const RUNTIME_VERSION = 3;
 
 const globalRuntime = globalThis as typeof globalThis & {
   [key: `__viandRuntimeV${number}`]: Runtime | undefined;
@@ -46,6 +52,7 @@ function getLiveRuntime(): Runtime {
       store,
       restaurants: getRestaurantProvider(),
       interpreter: getMessageInterpreter(store),
+      mediator: (chatId: string) => getCuisineMediator(store, chatId),
     };
   }
   return globalRuntime[LIVE_KEY];
@@ -74,6 +81,7 @@ async function processWith(
   const result = await handleInboundMessage(message, {
     store: runtime.store,
     messaging,
+    cuisineMediator: runtime.mediator?.(message.linqChatId) ?? null,
     restaurants: runtime.restaurants,
     interpreter: runtime.interpreter,
   });
