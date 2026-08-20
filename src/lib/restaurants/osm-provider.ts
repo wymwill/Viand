@@ -48,13 +48,22 @@ const BROAD_QUERY_RADIUS_METRES = 2_500;
 /**
  * Ceiling on elements fetched per query.
  *
- * At 40 this was the binding limit rather than the radius: Boston returned an
- * identical 35 results at one, two, and five miles, because the cap truncated
- * every one of them. Only five options are ever presented, but the scorer can
- * only choose among what it is given, and a group with a dietary requirement
- * needs a wide candidate pool to have anything survive elimination.
+ * This has to be far above what any real search returns, because Overpass
+ * truncates in its own order rather than by distance. At 150 a five mile
+ * search of central Boston returned 150 of the 1,409 restaurants actually
+ * there — and *which* 150 varied between identical queries. One run gave a
+ * spread across the whole radius with three Korean restaurants; another gave
+ * nothing but the dense downtown core and no Korean at all, so a group asking
+ * for Korean was shown five places that were not Korean. The cap was not
+ * trimming a long tail, it was sampling arbitrarily and discarding 90% of the
+ * data along with 28 of the 31 Korean listings.
+ *
+ * Uncapped costs little: the densest case measured, five miles around
+ * Manhattan, returned 4,548 elements in 1.9 MB and under four seconds. This
+ * number exists only so a pathological area cannot return something
+ * unbounded; it is not meant to bind in normal use.
  */
-const MAX_OVERPASS_RESULTS = 150;
+const MAX_OVERPASS_RESULTS = 5_000;
 
 /**
  * Ceiling on how far a single Overpass query may reach, independent of what the

@@ -93,14 +93,19 @@ const schema = z
     /**
      * Listings kept per cached search, chosen round-robin across cuisines.
      *
-     * Measured rather than guessed: at 25 a group containing one vegetarian
-     * dropped to a single option in Denver and Washington and two in Chicago,
-     * because the restaurants carrying dietary tags are a small minority and
-     * rarely the closest. At 60 the same groups got three and four. Five
-     * options are only ever shown, but the scorer can only choose among what
-     * it was given.
+     * Measured rather than guessed, twice. At 25 a group containing one
+     * vegetarian dropped to a single option in Denver and Washington. At 60 a
+     * group asking for Korean in Boston could only be shown three Korean
+     * places, because the budget is shared round-robin across roughly
+     * twenty-five cuisines and each therefore gets two or three slots — while
+     * the area actually has thirty-one Korean restaurants.
+     *
+     * At 200 a stated cuisine can fill the shortlist on its own, which is what
+     * someone asking for one expects. The cost is 86 KB per cached search
+     * against 25 KB, which is nothing next to being shown five places that are
+     * not what you asked for.
      */
-    RESTAURANT_CACHE_MAX_RESULTS: z.coerce.number().int().positive().default(60),
+    RESTAURANT_CACHE_MAX_RESULTS: z.coerce.number().int().positive().default(200),
     NOMINATIM_URL: z.string().url().default("https://nominatim.openstreetmap.org/search"),
     /** Nominatim's usage policy requires an identifying User-Agent. */
     OSM_USER_AGENT: z.string().default("Viand/0.1 (restaurant decision bot)"),
